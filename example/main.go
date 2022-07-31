@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"github.com/alberliu/mydb"
-	"os"
 	"strconv"
 )
 
@@ -12,11 +11,12 @@ func toBytes(i int) []byte {
 }
 
 func main() {
-	os.Remove("data")
 	db, err := mydb.Open("data")
 	if err != nil {
 		panic(err)
 	}
+
+	fmt.Println("init: ", db.Range(mydb.Infinity, mydb.Infinity))
 
 	for i := 1; i <= 5; i++ {
 		db.Add(toBytes(i), toBytes(i))
