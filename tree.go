@@ -13,28 +13,15 @@ func newTree(fm *fileManager) *tree {
 	return &tree{fm: fm}
 }
 
-func (b *tree) _getLeafPage(key []byte) *page {
-	front := b.fm.frontPage()
-	if bytes.Compare(key, front.min()) < 0 {
-		return nil
-	}
-
-	page := b.fm.rootPage()
-	for page.pageType() != pageTypeLeaf {
-		pre := page.preRecord(key)
-		page = b.fm.page(pre.child())
-	}
-	return page
-}
-
-// add 添加 相等
+// add 添加
 func (b *tree) add(key, value []byte) bool {
-	front := b.fm.frontPage()
-	if bytes.Compare(key, front.min()) < 0 {
+	leafPage := b._getLeafPage(key)
+	if leafPage == nil {
+		front := b.fm.frontPage()
 		_, isEnoughSpace := front.add(key, value)
 		if isEnoughSpace {
 			// 叶子节点不分裂,添加，并且更新枝干节点最小值
-			b._addToPageParent(front, nil)
+			b._addToPageParentFront(front, nil)
 		} else {
 			// 叶子节点需要分裂
 			newPage := b.fm.newPage(pageTypeLeaf)
@@ -44,11 +31,10 @@ func (b *tree) add(key, value []byte) bool {
 			front.setPre(front.offset)
 
 			b.fm.setFront(newPage.offset)
-			b._addToPageParent(front, newPage)
+			b._addToPageParentFront(front, newPage)
 		}
 		return true
 	} else {
-		leafPage := b._getLeafPage(key)
 		isCanAdd, isEnoughSpace := leafPage.add(key, value)
 		// 有相同数据，直接返回false
 		if !isCanAdd {
@@ -70,14 +56,29 @@ func (b *tree) add(key, value []byte) bool {
 
 			leafPage.setPre(newPage.offset)
 			leafPage.setNext(newPage.offset)
-			b._addToPageParentAfter(leafPage, newPage)
+			b._addToPageParentBehind(leafPage, newPage)
 		}
 		return true
 	}
 }
 
-// _addToPageParent 添加到page节点的parent节点，cn.page最小值小于node节点最小值
-func (b *tree) _addToPageParent(page, addedPage *page) {
+// _getLeafPage 获取叶子页
+func (b *tree) _getLeafPage(key []byte) *page {
+	front := b.fm.frontPage()
+	if bytes.Compare(key, front.min()) < 0 {
+		return nil
+	}
+
+	page := b.fm.rootPage()
+	for page.pageType() != pageTypeLeaf {
+		pre := page.preRecord(key)
+		page = b.fm.page(pre.child())
+	}
+	return page
+}
+
+// _addToPageParentFront 添加addedPage到page页的parent页， page.min() > addedPage.min()
+func (b *tree) _addToPageParentFront(page, addedPage *page) {
 	for {
 		parentOffset := page.parent()
 		if parentOffset == 0 && addedPage == nil {
@@ -141,8 +142,8 @@ func (b *tree) _addToPageParent(page, addedPage *page) {
 	}
 }
 
-// _addToPageParentAfter 将addedPage节点添加到page的parent节点
-func (b *tree) _addToPageParentAfter(page, addedPage *page) {
+// _addToPageParentBehind 将addedPage节点添加到page的parent节点，page.min() < addedPage.min()
+func (b *tree) _addToPageParentBehind(page, addedPage *page) {
 	for {
 		parentOffset := page.parent()
 		if parentOffset == 0 {
@@ -226,7 +227,6 @@ func (b *tree) delete(key []byte) bool {
 	}
 
 	// 这里应该回收节点
-
 	// 处理叶子节点
 	// 是front节点
 	if leafNode.pre() == 0 {
@@ -250,7 +250,6 @@ func (b *tree) delete(key []byte) bool {
 		}
 		parent = b.fm.page(parent.parent())
 	}
-
 	return true
 }
 
@@ -326,7 +325,7 @@ func (b *tree) all() []*record {
 	return cns
 }
 
-func (b *tree) display() {
+func (b *tree) _display() {
 	splitPage := &page{}
 
 	queue := NewQueue[page]()

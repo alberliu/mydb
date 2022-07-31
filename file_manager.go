@@ -76,9 +76,6 @@ func (f *fileManager) frontPage() *page {
 }
 
 func (f *fileManager) setRoot(root uint64) {
-	if root < pageSize {
-		panic(root)
-	}
 	buf, err := syscall.Mmap(f.fd, 0, pageSize, syscall.PROT_WRITE, syscall.MAP_SHARED)
 	if err != nil {
 		panic(err)
@@ -106,6 +103,7 @@ func (f *fileManager) page(offset uint64) *page {
 	return &page{offset: offset, buf: buf}
 }
 
+// newPage 申请内存
 func (f *fileManager) newPage(pageType uint16) *page {
 	// 从回收空间获取
 	buf, err := syscall.Mmap(f.fd, 0, pageSize, syscall.PROT_WRITE, syscall.MAP_SHARED)
@@ -124,6 +122,7 @@ func (f *fileManager) newPage(pageType uint16) *page {
 		return page
 	}
 
+	// 申请磁盘空间
 	fileSize := f.fileSize()
 	err = syscall.Ftruncate(f.fd, fileSize+pageSize)
 	if err != nil {
@@ -137,6 +136,7 @@ func (f *fileManager) newPage(pageType uint16) *page {
 	return newPage(buf, uint64(fileSize), pageType)
 }
 
+// recycle 回收空间
 func (f *fileManager) recycle(page *page) {
 	page._reset()
 

@@ -244,6 +244,7 @@ func (p *page) isNil() bool {
 	return false
 }
 
+// splitFront 溢出前面record
 func (p *page) splitFront(key, value []byte) []*record {
 	all := p.all()
 	all = appendToSortedRecords(all, &record{Key: key, Value: value})
@@ -264,7 +265,7 @@ func (p *page) splitFront(key, value []byte) []*record {
 	return overflow
 }
 
-// split 尝试分裂节点，返回溢出的记录
+// splitBehind 分裂节点，溢出后面record
 // first return 溢出的记录
 // second return 新插入的记录位置是否在前置节点
 func (p *page) splitBehind(key, value []byte) ([]*record, bool) {
