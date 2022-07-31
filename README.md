@@ -1,6 +1,6 @@
 # mydb
 
-golang写的引擎实现，基于b+树，mmap
+golang写的存储引擎，基于b+树，mmap
 
 ```go
 package main
