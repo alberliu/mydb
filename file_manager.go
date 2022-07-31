@@ -98,9 +98,6 @@ func (f *fileManager) setFront(front uint64) {
 
 // get 获取page
 func (f *fileManager) page(offset uint64) *page {
-	if offset == 0 {
-		panic(0)
-	}
 	buf, err := syscall.Mmap(f.fd, int64(offset), pageSize, syscall.PROT_WRITE, syscall.MAP_SHARED)
 	if err != nil {
 		log.Println(err, offset)
@@ -141,6 +138,8 @@ func (f *fileManager) newPage(pageType uint16) *page {
 }
 
 func (f *fileManager) recycle(page *page) {
+	page._reset()
+
 	buf, err := syscall.Mmap(f.fd, 0, pageSize, syscall.PROT_WRITE, syscall.MAP_SHARED)
 	if err != nil {
 		panic(err)
@@ -161,7 +160,7 @@ func (f *fileManager) getFromRecycle(page *page) {
 }
 
 // statistics page统计
-func (f *fileManager) statisticsPage() {
+func (f *fileManager) statisticsPage() string {
 	info, err := f.file.Stat()
 	if err != nil {
 		panic(err)
@@ -193,5 +192,5 @@ func (f *fileManager) statisticsPage() {
 		page = f.page(parent)
 	}
 
-	fmt.Printf("branchPageNum:%d, leafPageNum:%d, depth:%d\n", branchPageNum, leafPageNum, depth)
+	return fmt.Sprintf("branchPageNum:%d, leafPageNum:%d, depth:%d", branchPageNum, leafPageNum, depth)
 }

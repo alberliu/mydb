@@ -5,10 +5,10 @@ import (
 )
 
 func Test_appendToSortedRecords(t *testing.T) {
-	var init = func() []*Record {
-		var records []*Record
+	var init = func() []*record {
+		var records []*record
 		for i := 1; i < 9; i++ {
-			records = append(records, &Record{
+			records = append(records, &record{
 				Key: toBytes(i),
 			})
 		}
@@ -16,8 +16,8 @@ func Test_appendToSortedRecords(t *testing.T) {
 	}
 
 	type args struct {
-		l []*Record
-		r *Record
+		l []*record
+		r *record
 	}
 	tests := []struct {
 		name string
@@ -26,19 +26,19 @@ func Test_appendToSortedRecords(t *testing.T) {
 		{
 			args: args{
 				l: init(),
-				r: &Record{Key: toBytes(0)},
+				r: &record{Key: toBytes(0)},
 			},
 		},
 		{
 			args: args{
 				l: init(),
-				r: &Record{Key: toBytes(11)},
+				r: &record{Key: toBytes(11)},
 			},
 		},
 		{
 			args: args{
 				l: init(),
-				r: &Record{Key: toBytes(9)},
+				r: &record{Key: toBytes(9)},
 			},
 		},
 	}

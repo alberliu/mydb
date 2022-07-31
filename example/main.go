@@ -1,8 +1,3 @@
-# mydb
-
-golang写的引擎实现，基于b+树，mmap
-
-```go
 package main
 
 import (
@@ -36,6 +31,3 @@ func main() {
 
 	fmt.Println("range ", db.Range(toBytes(3), toBytes(4)))
 }
-
-
-```

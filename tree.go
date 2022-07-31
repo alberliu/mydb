@@ -13,7 +13,7 @@ func newTree(fm *fileManager) *tree {
 	return &tree{fm: fm}
 }
 
-func (b *tree) getLeafPage(key []byte) *page {
+func (b *tree) _getLeafPage(key []byte) *page {
 	front := b.fm.frontPage()
 	if bytes.Compare(key, front.min()) < 0 {
 		return nil
@@ -34,19 +34,21 @@ func (b *tree) add(key, value []byte) bool {
 		_, isEnoughSpace := front.add(key, value)
 		if isEnoughSpace {
 			// 叶子节点不分裂,添加，并且更新枝干节点最小值
-			b.addToPageParent(front, nil)
+			b._addToPageParent(front, nil)
 		} else {
 			// 叶子节点需要分裂
 			newPage := b.fm.newPage(pageTypeLeaf)
 			newPage.add(key, value)
 
 			newPage.setNext(front.offset)
+			front.setPre(front.offset)
+
 			b.fm.setFront(newPage.offset)
-			b.addToPageParent(front, newPage)
+			b._addToPageParent(front, newPage)
 		}
 		return true
 	} else {
-		leafPage := b.getLeafPage(key)
+		leafPage := b._getLeafPage(key)
 		isCanAdd, isEnoughSpace := leafPage.add(key, value)
 		// 有相同数据，直接返回false
 		if !isCanAdd {
@@ -63,16 +65,19 @@ func (b *tree) add(key, value []byte) bool {
 				newPage.add(records[i].Key, records[i].Value)
 			}
 
+			newPage.setPre(leafPage.pre())
 			newPage.setNext(leafPage.next())
+
+			leafPage.setPre(newPage.offset)
 			leafPage.setNext(newPage.offset)
-			b.addToPageParentAfter(leafPage, newPage)
+			b._addToPageParentAfter(leafPage, newPage)
 		}
 		return true
 	}
 }
 
-// addToPageParent 添加到page节点的parent节点，cn.page最小值小于node节点最小值
-func (b *tree) addToPageParent(page, addedPage *page) {
+// _addToPageParent 添加到page节点的parent节点，cn.page最小值小于node节点最小值
+func (b *tree) _addToPageParent(page, addedPage *page) {
 	for {
 		parentOffset := page.parent()
 		if parentOffset == 0 && addedPage == nil {
@@ -136,8 +141,8 @@ func (b *tree) addToPageParent(page, addedPage *page) {
 	}
 }
 
-// addToPageParentAfter 将addedPage节点添加到page的parent节点
-func (b *tree) addToPageParentAfter(page, addedPage *page) {
+// _addToPageParentAfter 将addedPage节点添加到page的parent节点
+func (b *tree) _addToPageParentAfter(page, addedPage *page) {
 	for {
 		parentOffset := page.parent()
 		if parentOffset == 0 {
@@ -187,7 +192,7 @@ func (b *tree) addToPageParentAfter(page, addedPage *page) {
 }
 
 func (b *tree) update(key, value []byte) bool {
-	leafNode := b.getLeafPage(key)
+	leafNode := b._getLeafPage(key)
 	if leafNode == nil {
 		return false
 	}
@@ -210,44 +215,47 @@ func (b *tree) delete(key []byte) bool {
 		return false
 	}
 
-	leafNode := b.getLeafPage(key)
+	leafNode := b._getLeafPage(key)
 	ok := leafNode.delete(key)
 	if !ok {
 		return false
 	}
 
-	if leafNode.isNil() {
+	if !leafNode.isNil() {
 		return true
 	}
 
 	// 这里应该回收节点
-	if leafNode.isNil() {
-		// 处理叶子节点
-		// 是front节点
-		if leafNode.pre() == 0 {
-			b.fm.setFront(leafNode.next())
-		} else {
-			b.fm.page(leafNode.pre()).setNext(leafNode.next())
-		}
-		// 回收叶子节点
-		b.fm.recycle(leafNode)
 
-		// 处理枝干节点
-		// 父节点不为nil,需要删除在父节点的位置
-		parent := b.fm.page(leafNode.parent())
-		for {
-			parent.delete(key)
-			if !parent.isNil() {
-				break
-			}
-			parent = b.fm.page(parent.parent())
-		}
+	// 处理叶子节点
+	// 是front节点
+	if leafNode.pre() == 0 {
+		b.fm.setFront(leafNode.next())
+	} else {
+		b.fm.page(leafNode.pre()).setNext(leafNode.next())
 	}
+	// 回收叶子节点
+	b.fm.recycle(leafNode)
+
+	// 处理枝干节点
+	// 父节点不为nil,需要删除在父节点的位置
+	if leafNode.parent() == 0 {
+		return true
+	}
+	parent := b.fm.page(leafNode.parent())
+	for {
+		parent.delete(key)
+		if !parent.isNil() {
+			break
+		}
+		parent = b.fm.page(parent.parent())
+	}
+
 	return true
 }
 
 func (b *tree) get(key []byte) ([]byte, bool) {
-	leafPage := b.getLeafPage(key)
+	leafPage := b._getLeafPage(key)
 	if leafPage == nil {
 		return nil, false
 	}
@@ -255,8 +263,56 @@ func (b *tree) get(key []byte) ([]byte, bool) {
 	return leafPage.get(key)
 }
 
-func (b *tree) all() []*Record {
-	cns := make([]*Record, 0, 100)
+func (b *tree) query(min, max []byte) []*record {
+	if bytes.Compare(min, Infinity) == 0 && bytes.Compare(max, Infinity) == 0 {
+		return b.all()
+	}
+
+	if bytes.Compare(min, Infinity) == 0 {
+		page := b._getLeafPage(max)
+		if page == nil {
+			return nil
+		}
+
+		var records []*record
+		for {
+			result := page.query(min, max)
+			if len(result) == 0 {
+				return records
+			}
+			records = append(records, result...)
+
+			if page.pre() == 0 {
+				break
+			}
+			page = b.fm.page(page.pre())
+		}
+		return records
+	} else {
+		page := b._getLeafPage(min)
+		if page == nil {
+			return nil
+		}
+
+		var records []*record
+		for {
+			result := page.query(min, max)
+			if len(result) == 0 {
+				return records
+			}
+			records = append(records, result...)
+
+			if page.next() == 0 {
+				break
+			}
+			page = b.fm.page(page.next())
+		}
+		return records
+	}
+}
+
+func (b *tree) all() []*record {
+	cns := make([]*record, 0, 100)
 
 	page := b.fm.frontPage()
 	for {

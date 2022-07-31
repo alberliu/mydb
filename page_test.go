@@ -47,14 +47,14 @@ func Test_page_getSetFlag8(t *testing.T) {
 
 func Test_page_addIncrement(t *testing.T) {
 	page := newPage(make([]byte, pageSize), 0, pageTypeLeaf)
-	var want []*Record
+	var want []*record
 
 	var offset uint16 = recordsDefaultBegin
 	for i := 1; i < 100; i++ {
 		buf := []byte(strconv.Itoa(i))
 		page.add(buf, buf)
 
-		r := &Record{Key: buf, Value: buf}
+		r := &record{Key: buf, Value: buf}
 		want = appendRecord(want, r)
 
 		offset += r.needSpaceLen()
@@ -79,14 +79,14 @@ func Test_page_addIncrement(t *testing.T) {
 func Test_page_addRand(t *testing.T) {
 	rand.Seed(time.Now().Unix())
 	page := newPage(make([]byte, pageSize), 0, pageTypeLeaf)
-	var want []*Record
+	var want []*record
 
 	var offset uint16 = recordsDefaultBegin
 	for i := 1; i < 100; i++ {
 		buf := []byte(strconv.Itoa(rand.Intn(100)))
 		page.add(buf, buf)
 
-		r := &Record{Key: buf, Value: buf}
+		r := &record{Key: buf, Value: buf}
 
 		want = appendRecord(want, r)
 
@@ -331,5 +331,19 @@ func Test_page_splitBehind(t *testing.T) {
 		}
 		fmt.Println("================================")
 		fmt.Println()
+	}
+}
+
+func Test_page_query(t *testing.T) {
+	page := newPage(make([]byte, pageSize), 0, pageTypeLeaf)
+	for i := 1; i < 10; i++ {
+		buf := []byte(strconv.Itoa(i))
+		page.add(buf, buf)
+	}
+
+	records := page.query(toBytes(1), toBytes(2))
+	t.Log(records)
+	if len(records) != 2 {
+		t.Fatal()
 	}
 }

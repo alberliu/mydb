@@ -13,7 +13,7 @@ func toBytes(i int) []byte {
 	return []byte(strconv.Itoa(i))
 }
 
-func isMatch(l1, l2 []*Record, r []byte) (ok bool, str string) {
+func isMatch(l1, l2 []*record, r []byte) (ok bool, str string) {
 	if len(l1) != len(l2) {
 		ok = false
 		str = fmt.Sprintf("len not match l1:%d l2:%d r:%s", len(l1), len(l2), r)
@@ -31,7 +31,7 @@ func isMatch(l1, l2 []*Record, r []byte) (ok bool, str string) {
 	return true, ""
 }
 
-func assertMatch(t *testing.T, l1, l2 []*Record, r []byte) {
+func assertMatch(t *testing.T, l1, l2 []*record, r []byte) {
 	if len(l1) != len(l2) {
 		t.Fatalf("len not match l1:%d l2:%d r:%s", len(l1), len(l2), r)
 	}
@@ -42,7 +42,7 @@ func assertMatch(t *testing.T, l1, l2 []*Record, r []byte) {
 	}
 }
 
-func isSorted(list []*Record) bool {
+func isSorted(list []*record) bool {
 	for i := 1; i < len(list); i++ {
 		if bytes.Compare(list[i-1].Key, list[i].Key) > 0 {
 			log.Println("isSorted", i, string(list[i-1].Key))
@@ -52,7 +52,7 @@ func isSorted(list []*Record) bool {
 	return true
 }
 
-func appendRecord(l []*Record, r *Record) []*Record {
+func appendRecord(l []*record, r *record) []*record {
 	for i := range l {
 		if bytes.Compare(l[i].Key, r.Key) == 0 {
 			return l
@@ -61,13 +61,13 @@ func appendRecord(l []*Record, r *Record) []*Record {
 	return append(l, r)
 }
 
-func sortRecords(l []*Record) {
+func sortRecords(l []*record) {
 	sort.Slice(l, func(i, j int) bool {
 		return bytes.Compare(l[i].Key, l[j].Key) < 0
 	})
 }
 
-func appendToSortedRecords(l []*Record, r *Record) []*Record {
+func appendToSortedRecords(l []*record, r *record) []*record {
 	l = append(l, r)
 
 	index := len(l) - 1
@@ -85,7 +85,7 @@ func appendToSortedRecords(l []*Record, r *Record) []*Record {
 	return l
 }
 
-func appendRecordWithSort(l []*Record, r *Record) []*Record {
+func appendRecordWithSort(l []*record, r *record) []*record {
 	for i := range l {
 		if bytes.Compare(l[i].Key, r.Key) == 0 {
 			return l

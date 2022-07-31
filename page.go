@@ -117,14 +117,14 @@ func (p *page) get(key []byte) ([]byte, bool) {
 // isCanAdd 是否可以添加，当page中不存在相等key,返回true
 // isEnoughSpace 是否有足够空间，当page中有足够空间返回true
 func (p *page) add(key, value []byte) (isCanAdd bool, isEnoughSpace bool) {
-	r := Record{Key: key, Value: value}
+	r := record{Key: key, Value: value}
 
 	beginIndex := p._indexByFlag2(flag2RecordBegin)
 	// 是一个空page
 	if beginIndex == 0 {
-		offset, spaceLen, _ := p.getSpace(r.needSpaceLen())
-		r.SpaceLen = spaceLen
-		r.Offset = offset
+		offset, spaceLen, _ := p._getSpace(r.needSpaceLen())
+		r.spaceLen = spaceLen
+		r.offset = offset
 		p._addRecordToOffset(r)
 		p._setIndexByFlag2(flag2RecordBegin, offset)
 		return true, true
@@ -137,25 +137,25 @@ func (p *page) add(key, value []byte) (isCanAdd bool, isEnoughSpace bool) {
 	}
 
 	// 获取空闲空间
-	freeSpaceOffset, spaceLen, ok := p.getSpace(r.needSpaceLen())
-	r.SpaceLen = spaceLen
-	r.Offset = freeSpaceOffset
+	freeSpaceOffset, spaceLen, ok := p._getSpace(r.needSpaceLen())
+	r.spaceLen = spaceLen
+	r.offset = freeSpaceOffset
 	if !ok {
 		return true, false
 	}
 
 	// 这里处理两种情况. preRecord 为空或者不为空
 	if pre == nil {
-		r.Next = beginIndex
+		r.next = beginIndex
 		// 写入到空闲空间
 		p._addRecordToOffset(r)
 		p._setIndexByFlag2(flag2RecordBegin, freeSpaceOffset)
 	} else {
-		r.Next = pre.Next
+		r.next = pre.next
 		// 写入到空闲空间
 		p._addRecordToOffset(r)
 		// 更新preRecord的next
-		binary.BigEndian.PutUint16(p.buf[pre.Offset+2:], freeSpaceOffset)
+		binary.BigEndian.PutUint16(p.buf[pre.offset+2:], freeSpaceOffset)
 	}
 	return true, true
 }
@@ -167,30 +167,30 @@ func (p *page) update(key, value []byte) (isCanUpdate bool, isEnoughSpace bool) 
 		return false, false
 	}
 
-	r := Record{
-		SpaceLen: current.SpaceLen,
-		Next:     current.Next,
+	r := record{
+		spaceLen: current.spaceLen,
+		next:     current.next,
 		Key:      key,
 		Value:    value,
-		Offset:   current.Offset,
+		offset:   current.offset,
 	}
 	// 原地址空间符合
-	if current.SpaceLen >= r.needSpaceLen() {
+	if current.spaceLen >= r.needSpaceLen() {
 		p._addRecordToOffset(r)
 		return true, true
 	}
 
 	// 原地址空间不符合
-	offset, spaceLen, ok := p.getSpace(r.needSpaceLen())
-	r.Offset = offset
-	r.SpaceLen = spaceLen
+	offset, spaceLen, ok := p._getSpace(r.needSpaceLen())
+	r.offset = offset
+	r.spaceLen = spaceLen
 	// 页空间符合
 	if ok {
 		p._addRecordToOffset(r)
 		if pre == nil {
 			p._setIndexByFlag2(flag2RecordBegin, offset)
 		} else {
-			pre.Next = offset
+			pre.next = offset
 			p._addRecordToOffset(*pre)
 		}
 
@@ -210,9 +210,9 @@ func (p *page) delete(key []byte) bool {
 		return false
 	}
 	if pre == nil {
-		p._setIndexByFlag2(flag2RecordBegin, current.Next)
+		p._setIndexByFlag2(flag2RecordBegin, current.next)
 	} else {
-		pre.Next = current.Next
+		pre.next = current.next
 		p._addRecordToOffset(*pre)
 	}
 
@@ -244,16 +244,14 @@ func (p *page) isNil() bool {
 	return false
 }
 
-func (p *page) splitFront(key, value []byte) []*Record {
+func (p *page) splitFront(key, value []byte) []*record {
 	all := p.all()
-	all = appendToSortedRecords(all, &Record{Key: key, Value: value})
+	all = appendToSortedRecords(all, &record{Key: key, Value: value})
 
-	p._setIndexByFlag2(flag2RecordBegin, 0)
-	p._setIndexByFlag2(flag2RecycleBegin, 0)
-	p._setIndexByFlag2(flag2FreeBegin, 0)
+	p._reset()
 
 	var useSpace uint16 = 0
-	overflow := make([]*Record, 0, 10)
+	overflow := make([]*record, 0, 10)
 	for i := range all {
 		// i != len(all) 这里要保证，p不是一个空页
 		if useSpace < recordMaxSize && i != len(all)-1 {
@@ -269,16 +267,14 @@ func (p *page) splitFront(key, value []byte) []*Record {
 // split 尝试分裂节点，返回溢出的记录
 // first return 溢出的记录
 // second return 新插入的记录位置是否在前置节点
-func (p *page) splitBehind(key, value []byte) ([]*Record, bool) {
+func (p *page) splitBehind(key, value []byte) ([]*record, bool) {
 	all := p.all()
-	all = appendToSortedRecords(all, &Record{Key: key, Value: value})
+	all = appendToSortedRecords(all, &record{Key: key, Value: value})
 
-	p._setIndexByFlag2(flag2RecordBegin, 0)
-	p._setIndexByFlag2(flag2RecycleBegin, 0)
-	p._setIndexByFlag2(flag2FreeBegin, 0)
+	p._reset()
 
 	var useSpace uint16 = 0
-	overflow := make([]*Record, 0, 10)
+	overflow := make([]*record, 0, 10)
 	for i := range all {
 		if useSpace < recordMaxSize {
 			p.add(all[i].Key, all[i].Value)
@@ -295,13 +291,40 @@ func (p *page) splitBehind(key, value []byte) ([]*Record, bool) {
 	return overflow, isFront
 }
 
+func (p *page) query(min, max []byte) []*record {
+	offset := p._indexByFlag2(flag2RecordBegin)
+	if offset == 0 {
+		return nil
+	}
+
+	records := make([]*record, 0, 10)
+	for {
+		record := p._nextRecord(offset)
+		if record.match(min, max) {
+			records = append(records, record)
+		}
+
+		offset = record.next
+		if offset == 0 {
+			break
+		}
+	}
+	return records
+}
+
+func (p *page) _reset() {
+	p._setIndexByFlag2(flag2RecordBegin, 0)
+	p._setIndexByFlag2(flag2RecycleBegin, 0)
+	p._setIndexByFlag2(flag2FreeBegin, 0)
+}
+
 /**
 节点为空      preRecord == nil, current == nil
 小于所有元素   preRecord == nil, current != nil
 中间         preRecord == nil, current != nil
 大于所有元素   preRecord.next = 0 preRecord==current
 */
-func (p *page) current(key []byte) (pre, current *Record) {
+func (p *page) current(key []byte) (pre, current *record) {
 	offset := p._indexByFlag2(flag2RecordBegin)
 	if offset == 0 {
 		return
@@ -314,22 +337,22 @@ func (p *page) current(key []byte) (pre, current *Record) {
 		}
 
 		pre = current
-		if current.Next == 0 {
+		if current.next == 0 {
 			break
 		}
-		offset = current.Next
+		offset = current.next
 	}
 	return
 }
 
-func (p *page) preRecord(key []byte) (pre *Record) {
+func (p *page) preRecord(key []byte) (pre *record) {
 
 	offset := p._indexByFlag2(flag2RecordBegin)
 	if offset == 0 {
 		return
 	}
 
-	var current *Record
+	var current *record
 	for {
 		current = p._nextRecord(offset)
 		if bytes.Compare(current.Key, key) > 0 {
@@ -340,19 +363,19 @@ func (p *page) preRecord(key []byte) (pre *Record) {
 		}
 
 		pre = current
-		if current.Next == 0 {
+		if current.next == 0 {
 			break
 		}
-		offset = current.Next
+		offset = current.next
 	}
 	return
 }
 
-func (p *page) _recycle(record *Record) {
+func (p *page) _recycle(record *record) {
 	recycleBegin := p._indexByFlag2(flag2RecycleBegin)
-	record.Next = recycleBegin
+	record.next = recycleBegin
 	p._addRecordToOffset(*record)
-	p._setIndexByFlag2(flag2RecycleBegin, record.Offset)
+	p._setIndexByFlag2(flag2RecycleBegin, record.offset)
 }
 
 func (p *page) _setSpace(offset, spaceLen, nextIndex uint16) (uint16, uint16) {
@@ -361,7 +384,7 @@ func (p *page) _setSpace(offset, spaceLen, nextIndex uint16) (uint16, uint16) {
 	return offset, offset + spaceLen
 }
 
-func (p *page) getSpace(needSpaceLen uint16) (spaceOffset uint16, spaceLen uint16, ok bool) {
+func (p *page) _getSpace(needSpaceLen uint16) (spaceOffset uint16, spaceLen uint16, ok bool) {
 	// 从回收空间获取
 	if spaceOffset, spaceLen, ok = p._getRecycleSpace(needSpaceLen); ok {
 		return
@@ -439,13 +462,13 @@ valueLen  2
 key
 value
 */
-func (p *page) _addRecordToOffset(record Record) {
-	offset := record.Offset
+func (p *page) _addRecordToOffset(record record) {
+	offset := record.offset
 	// 设置spaceLen
-	binary.BigEndian.PutUint16(p.buf[offset:], record.SpaceLen)
+	binary.BigEndian.PutUint16(p.buf[offset:], record.spaceLen)
 	offset += 2
 	// 设置nextIndex
-	binary.BigEndian.PutUint16(p.buf[offset:], record.Next)
+	binary.BigEndian.PutUint16(p.buf[offset:], record.next)
 	offset += 2
 	// 设置keyLen
 	binary.BigEndian.PutUint16(p.buf[offset:], uint16(len(record.Key)))
@@ -461,15 +484,15 @@ func (p *page) _addRecordToOffset(record Record) {
 	offset += uint16(len(record.Value))
 }
 
-func (p *page) _nextRecord(offset uint16) *Record {
-	var record Record
-	record.Offset = offset
+func (p *page) _nextRecord(offset uint16) *record {
+	var record record
+	record.offset = offset
 
 	// 读取spaceLen
-	record.SpaceLen = binary.BigEndian.Uint16(p.buf[offset:])
+	record.spaceLen = binary.BigEndian.Uint16(p.buf[offset:])
 	offset += 2
 	// 读取nextIndex
-	record.Next = binary.BigEndian.Uint16(p.buf[offset:])
+	record.next = binary.BigEndian.Uint16(p.buf[offset:])
 	offset += 2
 	// 读取keyLen
 	keyLen := binary.BigEndian.Uint16(p.buf[offset:])
@@ -489,18 +512,18 @@ func (p *page) _nextRecord(offset uint16) *Record {
 	return &record
 }
 
-func (p *page) all() []*Record {
+func (p *page) all() []*record {
 	offset := p._indexByFlag2(flag2RecordBegin)
 	if offset == 0 {
 		return nil
 	}
 
-	list := make([]*Record, 0, 10)
+	list := make([]*record, 0, 10)
 	for {
 		record := p._nextRecord(offset)
-		offset = record.Next
+		offset = record.next
 		list = append(list, record)
-		if record.Next == 0 {
+		if record.next == 0 {
 			break
 		}
 	}

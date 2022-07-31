@@ -1,32 +1,51 @@
 package mydb
 
 import (
+	"bytes"
 	"encoding/binary"
 	"fmt"
 )
 
-type Record struct {
-	SpaceLen   uint16
-	Next       uint16
+var Infinity = []byte("")
+
+type record struct {
 	Key        []byte
 	Value      []byte
-	Offset     uint16
+	spaceLen   uint16
+	next       uint16
+	offset     uint16
 	pageOffset uint64
 }
 
-func (r *Record) needSpaceLen() uint16 {
+func (r *record) check() error {
+	if r.needSpaceLen() >= recordMaxSize {
+		return ErrRecordTooLarge
+	}
+	return nil
+}
+
+func (r *record) match(min, max []byte) bool {
+	if bytes.Compare(min, Infinity) != 0 && bytes.Compare(min, r.Key) > 0 {
+		return false
+	}
+	if bytes.Compare(max, Infinity) != 0 && bytes.Compare(max, r.Key) < 0 {
+		return false
+	}
+	return true
+}
+
+func (r *record) needSpaceLen() uint16 {
 	return uint16(8) + uint16(len(r.Key)+len(r.Value))
 }
 
-func (r *Record) child() uint64 {
+func (r *record) child() uint64 {
 	return binary.BigEndian.Uint64(r.Value)
 }
 
-func (r *Record) display() {
-	fmt.Printf("Next:%-5d Key:%-5s Value:%-5s    ", r.Next, string(r.Key), string(r.Value))
+func (r *record) display() {
+	fmt.Printf("Next:%-5d Key:%-5s Value:%-5s    ", r.next, string(r.Key), string(r.Value))
 }
 
-func (r *Record) String() string {
-	return fmt.Sprintf("{Page:%-10d Next:%-4d Key:%-4s}",
-		r.pageOffset, r.Next, string(r.Key))
+func (r *record) String() string {
+	return fmt.Sprintf("{Key:%s:Value:%s}", string(r.Key), string(r.Value))
 }
