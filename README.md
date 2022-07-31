@@ -2,6 +2,7 @@
 
 golang写的存储引擎，基于b+树，mmap
 
+怎样使用：
 ```go
 package main
 
