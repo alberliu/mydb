@@ -15,11 +15,8 @@ type fileManager struct {
 
 const (
 	rootBegin    = 0
-	rootEnd      = 8
 	frontBegin   = 8
-	frontEnd     = 16
 	recycleBegin = 16
-	recycleEnd   = 24
 )
 
 func newFileManager(name string) (*fileManager, error) {
@@ -38,7 +35,7 @@ func newFileManager(name string) (*fileManager, error) {
 			return nil, err
 		}
 
-		page := fm.newPage(pageTypeLeaf)
+		page := fm.allocatePage(pageTypeLeaf)
 		fm.setRoot(page.offset)
 		fm.setFront(page.offset)
 	}
@@ -58,7 +55,7 @@ func (f *fileManager) rootPage() *page {
 	if err != nil {
 		panic(err)
 	}
-	index := binary.BigEndian.Uint64(buf[rootBegin:rootEnd])
+	index := binary.BigEndian.Uint64(buf[rootBegin:])
 	if index == 8 {
 		log.Println(buf[0:32])
 		panic(index)
@@ -72,7 +69,7 @@ func (f *fileManager) frontPage() *page {
 		panic(err)
 	}
 
-	return f.page(binary.BigEndian.Uint64(buf[frontBegin:frontEnd]))
+	return f.page(binary.BigEndian.Uint64(buf[frontBegin:]))
 }
 
 func (f *fileManager) setRoot(root uint64) {
@@ -81,7 +78,7 @@ func (f *fileManager) setRoot(root uint64) {
 		panic(err)
 	}
 
-	binary.BigEndian.PutUint64(buf[rootBegin:rootEnd], root)
+	binary.BigEndian.PutUint64(buf[rootBegin:], root)
 }
 
 func (f *fileManager) setFront(front uint64) {
@@ -90,10 +87,10 @@ func (f *fileManager) setFront(front uint64) {
 		panic(err)
 	}
 
-	binary.BigEndian.PutUint64(buf[frontBegin:frontEnd], front)
+	binary.BigEndian.PutUint64(buf[frontBegin:], front)
 }
 
-// get 获取page
+// page 获取page
 func (f *fileManager) page(offset uint64) *page {
 	buf, err := syscall.Mmap(f.fd, int64(offset), pageSize, syscall.PROT_WRITE, syscall.MAP_SHARED)
 	if err != nil {
@@ -103,14 +100,14 @@ func (f *fileManager) page(offset uint64) *page {
 	return &page{offset: offset, buf: buf}
 }
 
-// newPage 申请内存
-func (f *fileManager) newPage(pageType uint16) *page {
+// allocatePage 分配页空间，首先会尝试从回收空间分配，再申请新的磁盘空间
+func (f *fileManager) allocatePage(pageType uint16) *page {
 	// 从回收空间获取
 	buf, err := syscall.Mmap(f.fd, 0, pageSize, syscall.PROT_WRITE, syscall.MAP_SHARED)
 	if err != nil {
 		panic(err)
 	}
-	recycleOffset := binary.BigEndian.Uint64(buf[recycleBegin:recycleEnd])
+	recycleOffset := binary.BigEndian.Uint64(buf[recycleBegin:])
 	if recycleOffset != 0 {
 		buf, err := syscall.Mmap(f.fd, int64(recycleOffset), pageSize, syscall.PROT_WRITE, syscall.MAP_SHARED)
 		if err != nil {
@@ -118,7 +115,7 @@ func (f *fileManager) newPage(pageType uint16) *page {
 		}
 
 		page := newPage(buf, recycleOffset, pageType)
-		binary.BigEndian.PutUint64(buf[recycleBegin:recycleEnd], page.next())
+		binary.BigEndian.PutUint64(buf[recycleBegin:], page.next())
 		return page
 	}
 
@@ -139,24 +136,15 @@ func (f *fileManager) newPage(pageType uint16) *page {
 // recycle 回收空间
 func (f *fileManager) recycle(page *page) {
 	page._reset()
+	page.setPageType(pageTypeRecycle)
 
 	buf, err := syscall.Mmap(f.fd, 0, pageSize, syscall.PROT_WRITE, syscall.MAP_SHARED)
 	if err != nil {
 		panic(err)
 	}
 
-	page.setNext(binary.BigEndian.Uint64(buf[recycleBegin:recycleEnd]))
-	binary.BigEndian.PutUint64(buf[recycleBegin:recycleEnd], page.offset)
-}
-
-func (f *fileManager) getFromRecycle(page *page) {
-	buf, err := syscall.Mmap(f.fd, 0, pageSize, syscall.PROT_WRITE, syscall.MAP_SHARED)
-	if err != nil {
-		panic(err)
-	}
-
-	page.setNext(binary.BigEndian.Uint64(buf[recycleBegin:recycleEnd]))
-	binary.BigEndian.PutUint64(buf[recycleBegin:recycleEnd], page.offset)
+	page.setNext(binary.BigEndian.Uint64(buf[recycleBegin:]))
+	binary.BigEndian.PutUint64(buf[recycleBegin:], page.offset)
 }
 
 // statistics page统计
@@ -167,19 +155,23 @@ func (f *fileManager) statisticsPage() string {
 	}
 	fileSize := uint64(info.Size())
 
-	var branchPageNum, leafPageNum int
-
+	// 统计枝干页和叶子页数量
+	var branchPageNum, leafPageNum, recyclePageNum int
 	offset := uint64(pageSize)
 	for offset < fileSize {
 		page := f.page(offset)
-		if page.pageType() == pageTypeBranch {
+		switch page.pageType() {
+		case pageTypeBranch:
 			branchPageNum++
-		} else {
+		case pageTypeLeaf:
 			leafPageNum++
+		case pageTypeRecycle:
+			recyclePageNum++
 		}
 		offset += pageSize
 	}
 
+	// 统计b+树的深度
 	var depth = 1
 	page := f.frontPage()
 	for {
@@ -192,5 +184,6 @@ func (f *fileManager) statisticsPage() string {
 		page = f.page(parent)
 	}
 
-	return fmt.Sprintf("branchPageNum:%d, leafPageNum:%d, depth:%d", branchPageNum, leafPageNum, depth)
+	return fmt.Sprintf("filesize:%dB, totalPageNum:%d, branchPageNum:%d, leafPageNum:%d, recyclePageNum:%d, depth:%d",
+		fileSize, fileSize/pageSize, branchPageNum, leafPageNum, recyclePageNum, depth)
 }

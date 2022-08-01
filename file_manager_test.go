@@ -42,13 +42,13 @@ func Test_newFileManager(t *testing.T) {
 	}
 }
 
-func Test_fileManager_newPage(t *testing.T) {
+func Test_fileManager_allocatePage(t *testing.T) {
 	fm := newDefaultFileManager()
 
-	if fm.newPage(pageTypeLeaf).offset != 8192 {
+	if fm.allocatePage(pageTypeLeaf).offset != 8192 {
 		t.Fatal()
 	}
-	if fm.newPage(pageTypeLeaf).offset != 12288 {
+	if fm.allocatePage(pageTypeLeaf).offset != 12288 {
 		t.Fatal()
 	}
 }
@@ -56,7 +56,7 @@ func Test_fileManager_newPage(t *testing.T) {
 func Test_fileManager_recycle(t *testing.T) {
 	fm := newDefaultFileManager()
 
-	page := fm.newPage(pageTypeLeaf)
+	page := fm.allocatePage(pageTypeLeaf)
 	if fm.fileSize() != int64(pageSize*3) {
 		t.Fail()
 	}
@@ -66,7 +66,7 @@ func Test_fileManager_recycle(t *testing.T) {
 		t.Fail()
 	}
 
-	fm.newPage(pageTypeLeaf)
+	fm.allocatePage(pageTypeLeaf)
 	if fm.fileSize() != pageSize*3 {
 		t.Fail()
 	}

@@ -24,7 +24,7 @@ func (b *tree) add(key, value []byte) bool {
 			b._addToPageParentFront(front, nil)
 		} else {
 			// 叶子节点需要分裂
-			newPage := b.fm.newPage(pageTypeLeaf)
+			newPage := b.fm.allocatePage(pageTypeLeaf)
 			newPage.add(key, value)
 
 			newPage.setNext(front.offset)
@@ -35,9 +35,9 @@ func (b *tree) add(key, value []byte) bool {
 		}
 		return true
 	} else {
-		isCanAdd, isEnoughSpace := leafPage.add(key, value)
+		isUnique, isEnoughSpace := leafPage.add(key, value)
 		// 有相同数据，直接返回false
-		if !isCanAdd {
+		if !isUnique {
 			return false
 		}
 		if !isEnoughSpace {
@@ -46,7 +46,7 @@ func (b *tree) add(key, value []byte) bool {
 				return true
 			}
 
-			newPage := b.fm.newPage(pageTypeLeaf)
+			newPage := b.fm.allocatePage(pageTypeLeaf)
 			for i := range records {
 				newPage.add(records[i].Key, records[i].Value)
 			}
@@ -96,7 +96,7 @@ func (b *tree) _addToPageParentFront(page, addedPage *page) {
 				parent.delete(pageMin)
 				records := parent.splitFront(addedPage.min(), addedPage.offsetBuf())
 
-				newPage := b.fm.newPage(pageTypeBranch)
+				newPage := b.fm.allocatePage(pageTypeBranch)
 				for i := range records {
 					newPage.add(records[i].Key, records[i].Value)
 
@@ -112,7 +112,7 @@ func (b *tree) _addToPageParentFront(page, addedPage *page) {
 
 		if parentOffset == 0 {
 			// root 节点需要分裂
-			newPage := b.fm.newPage(pageTypeBranch)
+			newPage := b.fm.allocatePage(pageTypeBranch)
 			newPage.add(addedPage.min(), addedPage.offsetBuf())
 			newPage.add(page.min(), page.offsetBuf())
 
@@ -132,7 +132,7 @@ func (b *tree) _addToPageParentFront(page, addedPage *page) {
 			addedPage = nil
 		} else {
 			// 枝干节点节点需要分裂
-			newPage := b.fm.newPage(pageTypeBranch)
+			newPage := b.fm.allocatePage(pageTypeBranch)
 			newPage.add(addedPage.min(), addedPage.offsetBuf())
 			addedPage.setParent(newPage.offset)
 
@@ -148,7 +148,7 @@ func (b *tree) _addToPageParentBehind(page, addedPage *page) {
 		parentOffset := page.parent()
 		if parentOffset == 0 {
 			// page是根节点
-			newPage := b.fm.newPage(pageTypeBranch)
+			newPage := b.fm.allocatePage(pageTypeBranch)
 			newPage.add(page.min(), page.offsetBuf())
 			newPage.add(addedPage.min(), addedPage.offsetBuf())
 
@@ -173,7 +173,7 @@ func (b *tree) _addToPageParentBehind(page, addedPage *page) {
 			return
 		}
 
-		newPage := b.fm.newPage(pageTypeBranch)
+		newPage := b.fm.allocatePage(pageTypeBranch)
 		for i := range records {
 			newPage.add(records[i].Key, records[i].Value)
 
@@ -198,8 +198,8 @@ func (b *tree) update(key, value []byte) bool {
 		return false
 	}
 
-	isCanUpdate, isEnoughSpace := leafNode.update(key, value)
-	if !isCanUpdate {
+	isExist, isEnoughSpace := leafNode.update(key, value)
+	if !isExist {
 		return false
 	}
 	if isEnoughSpace {
