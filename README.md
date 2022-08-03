@@ -1,6 +1,6 @@
 # mydb
 
-golang写的存储引擎，基于b+树，mmap
+mydb是一个golang写的键值存储引擎，基于b+树，mmap
 
 怎样使用：
 ```go
@@ -9,7 +9,6 @@ package main
 import (
 	"fmt"
 	"github.com/alberliu/mydb"
-	"os"
 	"strconv"
 )
 
@@ -18,11 +17,12 @@ func toBytes(i int) []byte {
 }
 
 func main() {
-	os.Remove("data")
 	db, err := mydb.Open("data")
 	if err != nil {
 		panic(err)
 	}
+
+	fmt.Println("init: ", db.Range(mydb.Infinity, mydb.Infinity))
 
 	for i := 1; i <= 5; i++ {
 		db.Add(toBytes(i), toBytes(i))
@@ -37,6 +37,4 @@ func main() {
 
 	fmt.Println("range ", db.Range(toBytes(3), toBytes(4)))
 }
-
-
 ```

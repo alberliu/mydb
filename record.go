@@ -17,18 +17,15 @@ type record struct {
 	pageOffset uint64
 }
 
-func (r *record) check() error {
-	if r.needSpaceLen() >= recordMaxSize {
-		return ErrRecordTooLarge
-	}
-	return nil
+func recordMaxSize(pageSize uint16) uint16 {
+	return (pageSize - recordsDefaultBegin) / 2
 }
 
 func (r *record) match(min, max []byte) bool {
-	if bytes.Compare(min, Infinity) != 0 && bytes.Compare(min, r.Key) > 0 {
+	if !bytes.Equal(min, Infinity) && bytes.Compare(min, r.Key) > 0 {
 		return false
 	}
-	if bytes.Compare(max, Infinity) != 0 && bytes.Compare(max, r.Key) < 0 {
+	if !bytes.Equal(max, Infinity) && bytes.Compare(max, r.Key) < 0 {
 		return false
 	}
 	return true

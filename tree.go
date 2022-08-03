@@ -10,7 +10,9 @@ type tree struct {
 }
 
 func newTree(fm *fileManager) *tree {
-	return &tree{fm: fm}
+	return &tree{
+		fm: fm,
+	}
 }
 
 // add 添加
@@ -263,11 +265,11 @@ func (b *tree) get(key []byte) ([]byte, bool) {
 }
 
 func (b *tree) query(min, max []byte) []*record {
-	if bytes.Compare(min, Infinity) == 0 && bytes.Compare(max, Infinity) == 0 {
+	if bytes.Equal(min, Infinity) && bytes.Equal(max, Infinity) {
 		return b.all()
 	}
 
-	if bytes.Compare(min, Infinity) == 0 {
+	if bytes.Equal(min, Infinity) {
 		page := b._getLeafPage(max)
 		if page == nil {
 			return nil

@@ -6,12 +6,7 @@ import (
 	"fmt"
 )
 
-const (
-	pageSize            = 4096
-	recordsDefaultBegin = 64
-	recordsSpaceSize    = pageSize - recordsDefaultBegin
-	recordMaxSize       = recordsSpaceSize / 2
-)
+const recordsDefaultBegin = 64
 
 const (
 	pageTypeBranch  = 0 // 枝干
@@ -111,7 +106,7 @@ func (p *page) setNext(index uint64) {
 
 func (p *page) get(key []byte) ([]byte, bool) {
 	_, current := p.currentRecord(key)
-	if current == nil || bytes.Compare(current.Key, key) != 0 {
+	if current == nil || !bytes.Equal(current.Key, key) {
 		return nil, false
 	}
 
@@ -171,7 +166,7 @@ func (p *page) add(key, value []byte) (isUnique bool, isEnoughSpace bool) {
 func (p *page) update(key, value []byte) (isExist bool, isEnoughSpace bool) {
 	pre, current := p.currentRecord(key)
 	// record不存在
-	if current == nil || bytes.Compare(current.Key, key) != 0 {
+	if current == nil || !bytes.Equal(current.Key, key) {
 		return false, false
 	}
 
@@ -214,7 +209,7 @@ func (p *page) update(key, value []byte) (isExist bool, isEnoughSpace bool) {
 
 func (p *page) delete(key []byte) bool {
 	pre, current := p.currentRecord(key)
-	if current == nil || bytes.Compare(current.Key, key) != 0 {
+	if current == nil || !bytes.Equal(current.Key, key) {
 		return false
 	}
 	if pre == nil {
@@ -246,21 +241,19 @@ func (p *page) updateMinKey(key []byte) bool {
 }
 
 func (p *page) isNil() bool {
-	if p._indexByFlag2(flag2RecordBegin) == 0 {
-		return true
-	}
-	return false
+	return p._indexByFlag2(flag2RecordBegin) == 0
 }
 
 // splitFront 溢出前面record
 func (p *page) splitFront(key, value []byte) []*record {
 	all := p.all()
-	all = appendToSortedRecords(all, &record{Key: key, Value: value})
+	all, _ = appendToSortedRecords(all, &record{Key: key, Value: value})
 
 	p._reset()
 
 	var useSpace uint16 = 0
 	overflow := make([]*record, 0, 10)
+	recordMaxSize := p._recordMaxSize()
 	for i := range all {
 		// i != len(all) 这里要保证，p不是一个空页
 		if useSpace < recordMaxSize && i != len(all)-1 {
@@ -278,12 +271,13 @@ func (p *page) splitFront(key, value []byte) []*record {
 // second return 新插入的记录位置是否在前置节点
 func (p *page) splitBehind(key, value []byte) ([]*record, bool) {
 	all := p.all()
-	all = appendToSortedRecords(all, &record{Key: key, Value: value})
+	all, _ = appendToSortedRecords(all, &record{Key: key, Value: value})
 
 	p._reset()
 
 	var useSpace uint16 = 0
 	overflow := make([]*record, 0, 10)
+	recordMaxSize := p._recordMaxSize()
 	for i := range all {
 		if useSpace < recordMaxSize {
 			p.add(all[i].Key, all[i].Value)
@@ -298,6 +292,10 @@ func (p *page) splitBehind(key, value []byte) ([]*record, bool) {
 		isFront = false
 	}
 	return overflow, isFront
+}
+
+func (p *page) _recordMaxSize() uint16 {
+	return recordMaxSize(uint16(len(p.buf)))
 }
 
 func (p *page) query(min, max []byte) []*record {
@@ -451,6 +449,7 @@ func (p *page) _getFreeSpace(needSpaceLen uint16) (spaceOffset uint16, spaceLen 
 		freeBegin = recordsDefaultBegin
 	}
 	// 剩余空闲空间检查
+	pageSize := uint16(len(p.buf))
 	if pageSize-freeBegin < needSpaceLen {
 		ok = false
 		return
@@ -480,7 +479,6 @@ func (p *page) _setRecordOnOffset(record *record) {
 	offset += uint16(len(record.Key))
 	// 设置value
 	copy(p.buf[offset:], record.Value)
-	offset += uint16(len(record.Value))
 }
 
 // _record 在指定偏移位置

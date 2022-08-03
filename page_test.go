@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"fmt"
 	"math/rand"
-	"sort"
 	"strconv"
 	"strings"
 	"testing"
@@ -12,7 +11,7 @@ import (
 )
 
 func Test_page_indexFlag2(t *testing.T) {
-	page := newPage(make([]byte, pageSize), 0, pageTypeLeaf)
+	page := newPage(make([]byte, defaultPageSize), 0, pageTypeLeaf)
 	pageType := page.pageType()
 	if pageType != pageTypeBranch {
 		t.Fatalf("index != 1, index:%d", pageType)
@@ -27,7 +26,7 @@ func Test_page_indexFlag2(t *testing.T) {
 }
 
 func Test_page_getSetFlag8(t *testing.T) {
-	page := newPage(make([]byte, pageSize), 0, pageTypeLeaf)
+	page := newPage(make([]byte, defaultPageSize), 0, pageTypeLeaf)
 	index := uint64(1000000)
 	page.setParent(index)
 	if page.parent() != index {
@@ -45,72 +44,38 @@ func Test_page_getSetFlag8(t *testing.T) {
 	}
 }
 
-func Test_page_addIncrement(t *testing.T) {
-	page := newPage(make([]byte, pageSize), 0, pageTypeLeaf)
-	var want []*record
+func Test_page_add_increment(t *testing.T) {
+	page := newPage(make([]byte, defaultPageSize), 0, pageTypeLeaf)
+	mock := newRecordList()
 
-	var offset uint16 = recordsDefaultBegin
 	for i := 1; i < 100; i++ {
 		buf := []byte(strconv.Itoa(i))
 		page.add(buf, buf)
 
-		r := &record{Key: buf, Value: buf}
-		want = appendRecord(want, r)
-
-		offset += r.needSpaceLen()
+		mock.append(&record{Key: buf, Value: buf})
 	}
 
-	got := page.all()
-	sort.Slice(want, func(i, j int) bool {
-		return bytes.Compare(want[i].Key, want[j].Value) < 0
-	})
-
-	if len(got) != len(want) {
-		t.Fatalf("want:%d got:%d", len(want), len(got))
-	}
-
-	for i := range got {
-		if bytes.Compare(got[i].Key, want[i].Key) != 0 || bytes.Compare(got[i].Value, want[i].Value) != 0 {
-			t.Fatalf("%d \nwant:%v\n got:%v\n", i, want, got)
-		}
-	}
+	mock.assertMatch(t, page.all(), nil)
 }
 
-func Test_page_addRand(t *testing.T) {
+func Test_page_add_rand(t *testing.T) {
 	rand.Seed(time.Now().Unix())
-	page := newPage(make([]byte, pageSize), 0, pageTypeLeaf)
-	var want []*record
 
-	var offset uint16 = recordsDefaultBegin
+	page := newPage(make([]byte, defaultPageSize), 0, pageTypeLeaf)
+	mock := newRecordList()
+
 	for i := 1; i < 100; i++ {
 		buf := []byte(strconv.Itoa(rand.Intn(100)))
 		page.add(buf, buf)
 
-		r := &record{Key: buf, Value: buf}
-
-		want = appendRecord(want, r)
-
-		offset += r.needSpaceLen()
+		mock.append(&record{Key: buf, Value: buf})
 	}
 
-	got := page.all()
-	sort.Slice(want, func(i, j int) bool {
-		return bytes.Compare(want[i].Key, want[j].Value) < 0
-	})
-
-	if len(got) != len(want) {
-		t.Fatalf("want:%d got:%d", len(want), len(got))
-	}
-
-	for i := range got {
-		if bytes.Compare(got[i].Key, want[i].Key) != 0 || bytes.Compare(got[i].Value, want[i].Value) != 0 {
-			t.Fatalf("%d \nwant:%v\n got:%v\n", i, want, got)
-		}
-	}
+	mock.assertMatch(t, page.all(), nil)
 }
 
 func Test_page_getFreeSpace(t *testing.T) {
-	p := newPage(make([]byte, pageSize), 0, pageTypeLeaf)
+	p := newPage(make([]byte, defaultPageSize), 0, pageTypeLeaf)
 
 	for i := 0; i < 450; i++ {
 		spaceOffset, spaceLen, ok := p._getFreeSpace(10)
@@ -127,7 +92,7 @@ func Test_page_getFreeSpace(t *testing.T) {
 }
 
 func Test_page_getRecycleSpace1(t *testing.T) {
-	p := newPage(make([]byte, pageSize), 0, pageTypeLeaf)
+	p := newPage(make([]byte, defaultPageSize), 0, pageTypeLeaf)
 	offset := uint16(recordsDefaultBegin)
 	offset, next := p._setSpace(offset, 12, 0)
 	offset, next = p._setSpace(next, 11, offset)
@@ -184,7 +149,7 @@ func Test_page_getRecycleSpace1(t *testing.T) {
 }
 
 func Test_page_update(t *testing.T) {
-	page := newPage(make([]byte, pageSize), 0, pageTypeLeaf)
+	page := newPage(make([]byte, defaultPageSize), 0, pageTypeLeaf)
 
 	for i := 1; i < 10; i++ {
 		buf := []byte(strconv.Itoa(i))
@@ -196,18 +161,18 @@ func Test_page_update(t *testing.T) {
 		t.Fatal()
 	}
 	value, ok := page.get([]byte("1"))
-	if !ok || bytes.Compare(value, []byte("223")) != 0 {
+	if !ok || !bytes.Equal(value, []byte("223")) {
 		t.Fatal()
 	}
 
-	isCanUpdate, isEnoughSpace = page.update([]byte("101"), []byte("101"))
+	isCanUpdate, _ = page.update([]byte("101"), []byte("101"))
 	if isCanUpdate {
 		t.Fatal()
 	}
 }
 
 func Test_page_delete(t *testing.T) {
-	page := newPage(make([]byte, pageSize), 0, pageTypeLeaf)
+	page := newPage(make([]byte, defaultPageSize), 0, pageTypeLeaf)
 	for i := 1; i < 10; i++ {
 		buf := []byte(strconv.Itoa(i))
 		page.add(buf, buf)
@@ -243,20 +208,20 @@ func Test_page_delete(t *testing.T) {
 }
 
 func Test_page_min(t *testing.T) {
-	page := newPage(make([]byte, pageSize), 0, pageTypeLeaf)
+	page := newPage(make([]byte, defaultPageSize), 0, pageTypeLeaf)
 	for i := 1; i < 10; i++ {
 		buf := []byte(strconv.Itoa(i))
 		page.add(buf, buf)
 	}
 
 	key := page.min()
-	if bytes.Compare(key, []byte("1")) != 0 {
+	if !bytes.Equal(key, []byte("1")) {
 		t.Fatal()
 	}
 }
 
 func Test_page_updateMinKey(t *testing.T) {
-	page := newPage(make([]byte, pageSize), 0, pageTypeLeaf)
+	page := newPage(make([]byte, defaultPageSize), 0, pageTypeLeaf)
 	for i := 10; i < 11; i++ {
 		buf := []byte(strconv.Itoa(i))
 		fmt.Println("add", string(buf))
@@ -267,7 +232,7 @@ func Test_page_updateMinKey(t *testing.T) {
 	page.updateMinKey(newMin)
 
 	key := page.min()
-	if bytes.Compare(key, newMin) != 0 {
+	if !bytes.Equal(key, newMin) {
 		t.Fatal()
 	}
 	page.display()
@@ -275,7 +240,7 @@ func Test_page_updateMinKey(t *testing.T) {
 
 func Test_page_splitFront(t *testing.T) {
 	var initSpitPage = func() *page {
-		page := newPage(make([]byte, pageSize), 0, pageTypeLeaf)
+		page := newPage(make([]byte, defaultPageSize), 0, pageTypeLeaf)
 		for i := 1; i < 9; i++ {
 			buf := []byte(strings.Repeat(strconv.Itoa(i), 196))
 			page.add(buf, buf)
@@ -305,7 +270,7 @@ func Test_page_splitFront(t *testing.T) {
 
 func Test_page_splitBehind(t *testing.T) {
 	var initSpitPage = func() *page {
-		page := newPage(make([]byte, pageSize), 0, pageTypeLeaf)
+		page := newPage(make([]byte, defaultPageSize), 0, pageTypeLeaf)
 		for i := 1; i < 9; i++ {
 			buf := []byte(strings.Repeat(strconv.Itoa(i), 196))
 			page.add(buf, buf)
@@ -335,7 +300,7 @@ func Test_page_splitBehind(t *testing.T) {
 }
 
 func Test_page_query(t *testing.T) {
-	page := newPage(make([]byte, pageSize), 0, pageTypeLeaf)
+	page := newPage(make([]byte, defaultPageSize), 0, pageTypeLeaf)
 	for i := 1; i < 10; i++ {
 		buf := []byte(strconv.Itoa(i))
 		page.add(buf, buf)
