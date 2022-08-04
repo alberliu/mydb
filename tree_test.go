@@ -82,7 +82,7 @@ func Test_tree_add_head(t *testing.T) {
 
 	for i := 50000; i > 0; i-- {
 		data := []byte(fmt.Sprintf("%12d", i))
-		if i%1000 == 0 {
+		if i%10000 == 0 {
 			t.Log(string(data))
 		}
 		tree.add(data, data)
@@ -122,7 +122,7 @@ func Test_tree_add_tail(t *testing.T) {
 
 	for i := 0; i < 50000; i++ {
 		data := []byte(fmt.Sprintf("%6d", i))
-		if i%1000 == 0 {
+		if i%10000 == 0 {
 			t.Log(string(data))
 		}
 
@@ -144,9 +144,8 @@ func Test_tree_add_central(t *testing.T) {
 	mock.append(&record{Key: []byte("10000"), Value: []byte("10000")})
 
 	for i := 100000; i > 2; i-- {
-		if i%1000 == 0 {
-			fmt.Println(i)
-			t.Log(tree.fm.statisticsPage())
+		if i%10000 == 0 {
+			t.Log(i)
 		}
 
 		data := []byte(fmt.Sprintf("%6d", i))
