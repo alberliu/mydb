@@ -312,3 +312,13 @@ func Test_page_query(t *testing.T) {
 		t.Fatal()
 	}
 }
+
+func Test_page_count(t *testing.T) {
+	page := newPage(make([]byte, defaultPageSize), 0, pageTypeLeaf)
+	for i := 1; i < 10; i++ {
+		buf := []byte(strconv.Itoa(i))
+		page.add(buf, buf)
+	}
+
+	fmt.Println(page.count())
+}

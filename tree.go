@@ -327,6 +327,21 @@ func (b *tree) all() []*record {
 	return cns
 }
 
+func (b *tree) count() int {
+	count := 0
+
+	page := b.fm.frontPage()
+	for {
+		count += page.count()
+
+		if page.next() == 0 {
+			break
+		}
+		page = b.fm.page(page.next())
+	}
+	return count
+}
+
 func (b *tree) _display() {
 	splitPage := &page{}
 

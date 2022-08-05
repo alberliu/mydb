@@ -154,32 +154,52 @@ func (f *fileManager) recycle(page *page) {
 	binary.BigEndian.PutUint64(buf[recycleBegin:], page.offset)
 }
 
+type statisticsResult struct {
+	fileSize       uint64
+	pageSize       uint64
+	totalPageNum   uint64
+	branchPageNum  int
+	leafPageNum    int
+	recyclePageNum int
+	depth          int
+	recordNum      int
+}
+
+func (s *statisticsResult) String() string {
+	return fmt.Sprintf("filesize:%dB, totalPageNum:%d, branchPageNum:%d, leafPageNum:%d, recyclePageNum:%d, depth:%d, recordNum:%d",
+		s.fileSize, s.fileSize/s.pageSize, s.branchPageNum, s.leafPageNum, s.recyclePageNum, s.depth, s.recordNum)
+}
+
 // statistics page统计
-func (f *fileManager) statisticsPage() string {
+func (f *fileManager) statisticsPage() *statisticsResult {
+	var result statisticsResult
+	result.pageSize = f.pageSize
+
 	info, err := f.file.Stat()
 	if err != nil {
 		panic(err)
 	}
-	fileSize := uint64(info.Size())
+	result.fileSize = uint64(info.Size())
+	result.totalPageNum = result.fileSize / f.pageSize
 
 	// 统计枝干页和叶子页数量
-	var branchPageNum, leafPageNum, recyclePageNum int
 	offset := f.pageSize
-	for offset < fileSize {
+	for offset < result.fileSize {
 		page := f.page(offset)
 		switch page.pageType() {
 		case pageTypeBranch:
-			branchPageNum++
+			result.branchPageNum++
 		case pageTypeLeaf:
-			leafPageNum++
+			result.leafPageNum++
+			result.recordNum += page.count()
 		case pageTypeRecycle:
-			recyclePageNum++
+			result.recyclePageNum++
 		}
 		offset += f.pageSize
 	}
 
 	// 统计b+树的深度
-	var depth = 1
+	result.depth = 1
 	page := f.frontPage()
 	for {
 		parent := page.parent()
@@ -187,10 +207,9 @@ func (f *fileManager) statisticsPage() string {
 			break
 		}
 
-		depth++
+		result.depth++
 		page = f.page(parent)
 	}
 
-	return fmt.Sprintf("filesize:%dB, totalPageNum:%d, branchPageNum:%d, leafPageNum:%d, recyclePageNum:%d, depth:%d",
-		fileSize, fileSize/f.pageSize, branchPageNum, leafPageNum, recyclePageNum, depth)
+	return &result
 }

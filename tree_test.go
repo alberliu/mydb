@@ -217,7 +217,7 @@ func Test_tree_query(t *testing.T) {
 
 func Test_tree_get(t *testing.T) {
 	tree := newDefaultTree()
-	for i := 0; i <= 100000; i++ {
+	for i := 0; i <= 1000000; i++ {
 		if i%10000 == 0 {
 			t.Log(i)
 		}
@@ -225,7 +225,7 @@ func Test_tree_get(t *testing.T) {
 		data := []byte(fmt.Sprintf("%6d", i))
 		tree.add(data, data)
 	}
-	//t.Log(tree.fm.statisticsPage())
+	t.Log(tree.fm.statisticsPage())
 }
 
 func Benchmark_tree_get(b *testing.B) {
@@ -239,8 +239,4 @@ func Benchmark_tree_get(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		tree.get([]byte(fmt.Sprintf("%6d", rand.Intn(100000))))
 	}
-}
-
-func TestName(t *testing.T) {
-	fmt.Println((time.Second / 27186).Nanoseconds())
 }

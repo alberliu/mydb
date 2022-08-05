@@ -50,22 +50,6 @@ func (p *page) display() {
 	}
 }
 
-func (p *page) _indexByFlag2(flag int) uint16 {
-	return binary.BigEndian.Uint16(p.buf[flag : flag+byte2])
-}
-
-func (p *page) _setIndexByFlag2(flag int, value uint16) {
-	binary.BigEndian.PutUint16(p.buf[flag:flag+byte2], value)
-}
-
-func (p *page) _indexByFlag8(flag int) uint64 {
-	return binary.BigEndian.Uint64(p.buf[flag : flag+byte8])
-}
-
-func (p *page) _setIndexByFlag8(flag int, value uint64) {
-	binary.BigEndian.PutUint64(p.buf[flag:flag+byte8], value)
-}
-
 func (p *page) pageType() uint16 {
 	return p._indexByFlag2(flag2Type)
 }
@@ -294,10 +278,6 @@ func (p *page) splitBehind(key, value []byte) ([]*record, bool) {
 	return overflow, isFront
 }
 
-func (p *page) _recordMaxSize() uint16 {
-	return recordMaxSize(uint16(len(p.buf)))
-}
-
 func (p *page) query(min, max []byte) []*record {
 	offset := p._indexByFlag2(flag2RecordBegin)
 	if offset == 0 {
@@ -317,12 +297,6 @@ func (p *page) query(min, max []byte) []*record {
 		}
 	}
 	return records
-}
-
-func (p *page) _reset() {
-	p._setIndexByFlag2(flag2RecordBegin, 0)
-	p._setIndexByFlag2(flag2RecycleBegin, 0)
-	p._setIndexByFlag2(flag2FreeBegin, 0)
 }
 
 // currentRecord 查找key所在的pre record 和 current record
@@ -372,6 +346,70 @@ func (p *page) preRecord(key []byte) (pre *record) {
 		offset = current.next
 	}
 	return
+}
+
+func (p *page) all() []*record {
+	offset := p._indexByFlag2(flag2RecordBegin)
+	if offset == 0 {
+		return nil
+	}
+
+	list := make([]*record, 0, 10)
+	for {
+		record := p._record(offset)
+		list = append(list, record)
+
+		offset = record.next
+		if offset == 0 {
+			break
+		}
+	}
+	return list
+}
+
+func (p *page) count() int {
+	offset := p._indexByFlag2(flag2RecordBegin)
+	if offset == 0 {
+		return 0
+	}
+
+	var num = 0
+	for {
+		record := p._record(offset)
+		num++
+
+		offset = record.next
+		if offset == 0 {
+			break
+		}
+	}
+	return num
+}
+
+func (p *page) _indexByFlag2(flag int) uint16 {
+	return binary.BigEndian.Uint16(p.buf[flag : flag+byte2])
+}
+
+func (p *page) _setIndexByFlag2(flag int, value uint16) {
+	binary.BigEndian.PutUint16(p.buf[flag:flag+byte2], value)
+}
+
+func (p *page) _indexByFlag8(flag int) uint64 {
+	return binary.BigEndian.Uint64(p.buf[flag : flag+byte8])
+}
+
+func (p *page) _setIndexByFlag8(flag int, value uint64) {
+	binary.BigEndian.PutUint64(p.buf[flag:flag+byte8], value)
+}
+
+func (p *page) _recordMaxSize() uint16 {
+	return recordMaxSize(uint16(len(p.buf)))
+}
+
+func (p *page) _reset() {
+	p._setIndexByFlag2(flag2RecordBegin, 0)
+	p._setIndexByFlag2(flag2RecycleBegin, 0)
+	p._setIndexByFlag2(flag2FreeBegin, 0)
 }
 
 // _recycle 回收record空间
@@ -508,22 +546,4 @@ func (p *page) _record(offset uint16) *record {
 
 	record.pageOffset = p.offset
 	return &record
-}
-
-func (p *page) all() []*record {
-	offset := p._indexByFlag2(flag2RecordBegin)
-	if offset == 0 {
-		return nil
-	}
-
-	list := make([]*record, 0, 10)
-	for {
-		record := p._record(offset)
-		offset = record.next
-		list = append(list, record)
-		if record.next == 0 {
-			break
-		}
-	}
-	return list
 }
