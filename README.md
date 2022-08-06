@@ -26,7 +26,7 @@ func main() {
 	fmt.Println("init: ", db.Range(mydb.Infinity, mydb.Infinity))
 
 	for i := 1; i <= 5; i++ {
-		_ = db.Set(toBytes(i), toBytes(i))
+		_, _ = db.Set(toBytes(i), toBytes(i))
 	}
 	fmt.Println("set:  ", db.Range(mydb.Infinity, mydb.Infinity))
 
@@ -35,7 +35,6 @@ func main() {
 
 	fmt.Println("range ", db.Range(toBytes(3), toBytes(4)))
 }
-
 ```
 ### 简单性能测试
 测试环境：

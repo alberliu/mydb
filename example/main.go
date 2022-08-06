@@ -20,7 +20,7 @@ func main() {
 	fmt.Println("init: ", db.Range(mydb.Infinity, mydb.Infinity))
 
 	for i := 1; i <= 5; i++ {
-		_ = db.Set(toBytes(i), toBytes(i))
+		_, _ = db.Set(toBytes(i), toBytes(i))
 	}
 	fmt.Println("set:  ", db.Range(mydb.Infinity, mydb.Infinity))
 
