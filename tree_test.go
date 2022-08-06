@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math/rand"
 	"os"
+	"strconv"
 	"testing"
 	"time"
 )
@@ -34,14 +35,11 @@ func Test_tree_complex_rand(t *testing.T) {
 		}
 
 		r := toBytes(rand.Intn(10000))
-		switch rand.Intn(3) {
+		switch rand.Intn(2) {
 		case 0:
-			tree.add(r, r)
-			mock.append(&record{Key: r, Value: r})
+			tree.set(r, r)
+			mock.set(&record{Key: r, Value: r})
 		case 1:
-			tree.update(r, r)
-			mock.update(&record{Key: r, Value: r})
-		case 2:
 			tree.delete(r)
 			mock.delete(r)
 		}
@@ -60,15 +58,18 @@ func Test_tree_add_rand(t *testing.T) {
 	t.Log("seed", seed)
 	rand.Seed(seed)
 
-	for i := 0; i <= 100000; i++ {
-		if i%10000 == 0 {
+	for i := 0; i <= 10000; i++ {
+		if i%1000 == 0 {
 			t.Log(i)
 		}
 
 		r := toBytes(rand.Intn(1000000000000000000))
 
-		tree.add(r, r)
-		mock.append(&record{Key: r, Value: r})
+		isNew := tree.set(r, r)
+		mockIsNew := mock.set(&record{Key: r, Value: r})
+		if isNew != mockIsNew {
+			t.Fatal()
+		}
 	}
 
 	all := tree.all()
@@ -85,9 +86,9 @@ func Test_tree_add_head(t *testing.T) {
 		if i%10000 == 0 {
 			t.Log(string(data))
 		}
-		tree.add(data, data)
+		tree.set(data, data)
 
-		mock.append(&record{Key: data, Value: data})
+		mock.set(&record{Key: data, Value: data})
 	}
 
 	mock.assertMatch(t, tree.all(), nil)
@@ -98,7 +99,7 @@ func Test_tree_add_hea2(t *testing.T) {
 	tree := newDefaultTree()
 
 	for i := 0; i < 10; i++ {
-		tree.add(toBytes(i), toBytes(i))
+		tree.set(toBytes(i), toBytes(i))
 
 		sorted := isSorted(tree.all())
 		if !sorted {
@@ -107,7 +108,7 @@ func Test_tree_add_hea2(t *testing.T) {
 	}
 
 	for i := 101; i < 110; i++ {
-		tree.add(toBytes(i), toBytes(i))
+		tree.set(toBytes(i), toBytes(i))
 
 		sorted := isSorted(tree.all())
 		if !sorted {
@@ -126,8 +127,8 @@ func Test_tree_add_tail(t *testing.T) {
 			t.Log(string(data))
 		}
 
-		tree.add(data, data)
-		mock.append(&record{Key: data, Value: data})
+		tree.set(data, data)
+		mock.set(&record{Key: data, Value: data})
 	}
 
 	mock.assertMatch(t, tree.all(), nil)
@@ -136,12 +137,12 @@ func Test_tree_add_tail(t *testing.T) {
 
 func Test_tree_add_central(t *testing.T) {
 	tree := newDefaultTree()
-	tree.add([]byte("00001"), []byte("00001"))
-	tree.add([]byte("10000"), []byte("10000"))
+	tree.set([]byte("00001"), []byte("00001"))
+	tree.set([]byte("10000"), []byte("10000"))
 
 	mock := newRecordList()
-	mock.append(&record{Key: []byte("00001"), Value: []byte("00001")})
-	mock.append(&record{Key: []byte("10000"), Value: []byte("10000")})
+	mock.set(&record{Key: []byte("00001"), Value: []byte("00001")})
+	mock.set(&record{Key: []byte("10000"), Value: []byte("10000")})
 
 	for i := 100000; i > 2; i-- {
 		if i%10000 == 0 {
@@ -149,9 +150,9 @@ func Test_tree_add_central(t *testing.T) {
 		}
 
 		data := []byte(fmt.Sprintf("%6d", i))
-		tree.add(data, data)
+		tree.set(data, data)
 
-		mock.append(&record{Key: data, Value: data})
+		mock.set(&record{Key: data, Value: data})
 	}
 	mock.assertMatch(t, tree.all(), nil)
 }
@@ -160,7 +161,7 @@ func newDefaultTreeWithData() *tree {
 	tree := newDefaultTree()
 	for i := 0; i < 5000; i++ {
 		data := []byte(fmt.Sprintf("%6d", i))
-		tree.add(data, data)
+		tree.set(data, data)
 	}
 	return tree
 }
@@ -170,7 +171,7 @@ func Test_tree_update(t *testing.T) {
 
 	key := []byte(fmt.Sprintf("%6d", 1))
 	value := []byte(fmt.Sprintf("%1d", 100))
-	tree.update(key, value)
+	tree.set(key, value)
 
 	result, ok := tree.get(key)
 	if !ok || !bytes.Equal(result, value) {
@@ -215,16 +216,19 @@ func Test_tree_query(t *testing.T) {
 	}
 }
 
-func Test_tree_get(t *testing.T) {
+func Test_tree_get_init_data(t *testing.T) {
 	tree := newDefaultTree()
-	for i := 0; i <= 1000000; i++ {
-		if i%10000 == 0 {
+	now := time.Now()
+	for i := 1; i <= 1000000; i++ {
+		if i%100000 == 0 {
 			t.Log(i)
 		}
 
-		data := []byte(fmt.Sprintf("%6d", i))
-		tree.add(data, data)
+		data := []byte(strconv.Itoa(i))
+		tree.set(data, data)
 	}
+
+	t.Logf("cost:%v tps:%v", time.Now().Sub(now), 1000000/time.Now().Sub(now).Seconds())
 	t.Log(tree.fm.statisticsPage())
 }
 
@@ -237,6 +241,33 @@ func Benchmark_tree_get(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		tree.get([]byte(fmt.Sprintf("%6d", rand.Intn(100000))))
+		tree.get([]byte(strconv.Itoa(rand.Intn(1000000))))
 	}
+}
+
+func Test_tree__display(t *testing.T) {
+	tree := newDefaultTree()
+	for i := 0; i <= 100; i++ {
+		data := []byte(fmt.Sprintf("%6d", i))
+		tree.set(data, data)
+	}
+
+	tree._display()
+}
+
+func Test_tree_count(t *testing.T) {
+	tree := newDefaultTree()
+	for i := 0; i < 100; i++ {
+		data := []byte(fmt.Sprintf("%6d", i))
+		tree.set(data, data)
+	}
+
+	num := tree.count()
+	if num != 100 {
+		t.Fatal(num)
+	}
+}
+
+func TestName(t *testing.T) {
+	fmt.Println(int(time.Second / 37631))
 }

@@ -19,7 +19,6 @@ const (
 	byte8 = 8
 )
 
-// 回收
 const (
 	flag8Parent = 0  // 页父节点位置
 	flag8Pre    = 8  // 页前置节点位置
@@ -97,98 +96,71 @@ func (p *page) get(key []byte) ([]byte, bool) {
 	return current.Value, true
 }
 
-// add 添加
-// isUnique 是否唯一，当page中不存在相等key,返回true
-// isEnoughSpace 是否有足够空间，当page中有足够空间返回true
-func (p *page) add(key, value []byte) (isUnique bool, isEnoughSpace bool) {
-	r := &record{Key: key, Value: value}
-
-	beginIndex := p._indexByFlag2(flag2RecordBegin)
-	// 是一个空page
-	if beginIndex == 0 {
-		offset, spaceLen, _ := p._getSpace(r.needSpaceLen())
-		r.spaceLen = spaceLen
-		r.offset = offset
-		p._setRecordOnOffset(r)
-		p._setIndexByFlag2(flag2RecordBegin, offset)
-		return true, true
-	}
-
-	// 找到需要插入的位置
-	pre, current := p.currentRecord(key)
-	if current != nil && bytes.Equal(current.Key, r.Key) {
-		return false, true
-	}
-
-	// 获取空闲空间
-	freeSpaceOffset, spaceLen, ok := p._getSpace(r.needSpaceLen())
-	r.spaceLen = spaceLen
-	r.offset = freeSpaceOffset
-	if !ok {
-		return true, false
-	}
-
-	// 这里处理两种情况. preRecord 为空或者不为空
-	if pre == nil {
-		r.next = beginIndex
-		// 写入到空闲空间
-		p._setRecordOnOffset(r)
-		p._setIndexByFlag2(flag2RecordBegin, freeSpaceOffset)
-	} else {
-		r.next = pre.next
-		// 写入到空闲空间
-		p._setRecordOnOffset(r)
-		// 更新preRecord的next
-		binary.BigEndian.PutUint16(p.buf[pre.offset+2:], freeSpaceOffset)
-	}
-	return true, true
-}
-
 // update 更新
-// isExist 是否存在
+// isNew 是否是新纪录
 // isEnoughSpace 是否空间足够
-func (p *page) update(key, value []byte) (isExist bool, isEnoughSpace bool) {
-	pre, current := p.currentRecord(key)
-	// record不存在
-	if current == nil || !bytes.Equal(current.Key, key) {
-		return false, false
-	}
-
+func (p *page) set(key, value []byte) (isNew bool, isEnoughSpace bool) {
 	r := &record{
-		spaceLen: current.spaceLen,
-		next:     current.next,
-		Key:      key,
-		Value:    value,
-		offset:   current.offset,
-	}
-	// 原地址空间符合
-	if current.spaceLen >= r.needSpaceLen() {
-		p._setRecordOnOffset(r)
-		return true, true
+		Key:   key,
+		Value: value,
 	}
 
-	// 原地址空间不符合
-	offset, spaceLen, ok := p._getSpace(r.needSpaceLen())
-	r.offset = offset
-	r.spaceLen = spaceLen
-	// 页空间符合
-	if ok {
-		p._setRecordOnOffset(r)
-		if pre == nil {
-			p._setIndexByFlag2(flag2RecordBegin, offset)
-		} else {
-			pre.next = offset
-			p._setRecordOnOffset(pre)
+	isNew = true
+	pre, current := p.currentRecord(key)
+	// record存在
+	if current != nil && bytes.Equal(current.Key, key) {
+		r.spaceLen = current.spaceLen
+		r.next = current.next
+		r.offset = current.offset
+
+		// 原地址空间符合，直接更新
+		if current.spaceLen >= r.needSpaceLen() {
+			p._setRecordOnOffset(r)
+			isEnoughSpace = true
+			return
 		}
 
+		// 删除record
+		if pre == nil {
+			p._setIndexByFlag2(flag2RecordBegin, current.next)
+		} else {
+			pre.next = current.next
+			p._setRecordOnOffset(pre)
+		}
 		// 回收空间
 		p._recycle(current)
-		return true, true
+		isNew = false
 	}
 
-	// 页空间不符合
-	p.delete(key)
-	return true, false
+	// 原地址空间不符合或者记录不存在，需要添加
+	offset, spaceLen, ok := p._getSpace(r.needSpaceLen())
+	// 页空间符合
+	if ok {
+		r.offset = offset
+		r.spaceLen = spaceLen
+		if r.next == 0 {
+			if pre != nil {
+				r.next = pre.next
+			} else {
+				r.next = p._indexByFlag2(flag2RecordBegin)
+			}
+		}
+		p._setRecordOnOffset(r)
+
+		// 更新pre record的next
+		if pre != nil {
+			pre.next = offset
+			p._setRecordOnOffset(pre)
+		} else {
+			p._setIndexByFlag2(flag2RecordBegin, offset)
+		}
+
+		isEnoughSpace = true
+		return
+	}
+
+	isEnoughSpace = false
+	return
 }
 
 func (p *page) delete(key []byte) bool {
@@ -220,7 +192,7 @@ func (p *page) updateMinKey(key []byte) bool {
 	min := p.min()
 	value, _ := p.get(min)
 	p.delete(min)
-	_, isEnoughSpace := p.add(key, value)
+	_, isEnoughSpace := p.set(key, value)
 	return isEnoughSpace
 }
 
@@ -244,7 +216,7 @@ func (p *page) splitFront(key, value []byte) []*record {
 			overflow = append(overflow, all[i])
 			useSpace += all[i].needSpaceLen()
 		} else {
-			p.add(all[i].Key, all[i].Value)
+			p.set(all[i].Key, all[i].Value)
 		}
 	}
 	return overflow
@@ -264,7 +236,7 @@ func (p *page) splitBehind(key, value []byte) ([]*record, bool) {
 	recordMaxSize := p._recordMaxSize()
 	for i := range all {
 		if useSpace < recordMaxSize {
-			p.add(all[i].Key, all[i].Value)
+			p.set(all[i].Key, all[i].Value)
 			useSpace += all[i].needSpaceLen()
 		} else {
 			overflow = append(overflow, all[i])
@@ -300,16 +272,15 @@ func (p *page) query(min, max []byte) []*record {
 }
 
 // currentRecord 查找key所在的pre record 和 current record
-// 节点为空      preRecord == nil, current == nil
-// 小于所有元素   preRecord == nil, current != nil
-// 中间         preRecord == nil, current != nil
-// 大于所有元素   preRecord.next = 0 preRecord==current
+// 节点为空     preRecord == nil, current == nil
+// 小于所有元素  preRecord == nil, current != nil,此时current为第一个record
+// 中间         preRecord != nil, current != nil
+// 大于所有元素  preRecord != nil && preRecord.next = 0 current == preRecord
 func (p *page) currentRecord(key []byte) (pre, current *record) {
 	offset := p._indexByFlag2(flag2RecordBegin)
 	if offset == 0 {
 		return
 	}
-
 	for {
 		current = p._record(offset)
 		if bytes.Compare(current.Key, key) >= 0 {

@@ -2,7 +2,6 @@ package mydb
 
 import (
 	"bytes"
-	"fmt"
 	"math/rand"
 	"strconv"
 	"strings"
@@ -13,7 +12,7 @@ import (
 func Test_page_indexFlag2(t *testing.T) {
 	page := newPage(make([]byte, defaultPageSize), 0, pageTypeLeaf)
 	pageType := page.pageType()
-	if pageType != pageTypeBranch {
+	if pageType != pageTypeLeaf {
 		t.Fatalf("index != 1, index:%d", pageType)
 	}
 
@@ -44,34 +43,69 @@ func Test_page_getSetFlag8(t *testing.T) {
 	}
 }
 
-func Test_page_add_increment(t *testing.T) {
+func Test_page_set(t *testing.T) {
+	page := newPage(make([]byte, defaultPageSize), 0, pageTypeLeaf)
+
+	for i := 1; i < 10; i++ {
+		buf := []byte(strconv.Itoa(i))
+		page.set(buf, buf)
+	}
+
+	isNew, isEnoughSpace := page.set([]byte("1"), []byte("223"))
+	if !isNew || !isEnoughSpace {
+		t.Fatal()
+	}
+	value, ok := page.get([]byte("1"))
+	if !ok || !bytes.Equal(value, []byte("223")) {
+		t.Fatalf("value:%s ok:%v\n", string(value), ok)
+	}
+
+	isNew, _ = page.set([]byte("101"), []byte("101"))
+	if isNew {
+		t.Fatal()
+	}
+	value, ok = page.get([]byte("101"))
+	if !ok || !bytes.Equal(value, []byte("101")) {
+		t.Fatalf("value:%s ok:%v\n", string(value), ok)
+	}
+}
+
+func Test_page_set_increment(t *testing.T) {
 	page := newPage(make([]byte, defaultPageSize), 0, pageTypeLeaf)
 	mock := newRecordList()
 
 	for i := 1; i < 100; i++ {
 		buf := []byte(strconv.Itoa(i))
-		page.add(buf, buf)
+		page.set(buf, buf)
 
-		mock.append(&record{Key: buf, Value: buf})
+		mock.set(&record{Key: buf, Value: buf})
 	}
 
 	mock.assertMatch(t, page.all(), nil)
 }
 
-func Test_page_add_rand(t *testing.T) {
+func Test_page_set_rand(t *testing.T) {
 	rand.Seed(time.Now().Unix())
 
 	page := newPage(make([]byte, defaultPageSize), 0, pageTypeLeaf)
 	mock := newRecordList()
 
-	for i := 1; i < 100; i++ {
+	seed := time.Now().Unix()
+	rand.Seed(seed)
+	t.Log("seed:", seed)
+	for i := 1; i < 1000; i++ {
 		buf := []byte(strconv.Itoa(rand.Intn(100)))
-		page.add(buf, buf)
 
-		mock.append(&record{Key: buf, Value: buf})
+		isNew, isEnoughSpace := page.set(buf, buf)
+		if isEnoughSpace {
+			mockIsNew := mock.set(&record{Key: buf, Value: buf})
+			if isNew != mockIsNew {
+				t.Fatal()
+			}
+		}
+
+		mock.assertMatch(t, page.all(), buf)
 	}
-
-	mock.assertMatch(t, page.all(), nil)
 }
 
 func Test_page_getFreeSpace(t *testing.T) {
@@ -148,34 +182,11 @@ func Test_page_getRecycleSpace1(t *testing.T) {
 	}
 }
 
-func Test_page_update(t *testing.T) {
-	page := newPage(make([]byte, defaultPageSize), 0, pageTypeLeaf)
-
-	for i := 1; i < 10; i++ {
-		buf := []byte(strconv.Itoa(i))
-		page.add(buf, buf)
-	}
-
-	isCanUpdate, isEnoughSpace := page.update([]byte("1"), []byte("223"))
-	if !isCanUpdate || !isEnoughSpace {
-		t.Fatal()
-	}
-	value, ok := page.get([]byte("1"))
-	if !ok || !bytes.Equal(value, []byte("223")) {
-		t.Fatal()
-	}
-
-	isCanUpdate, _ = page.update([]byte("101"), []byte("101"))
-	if isCanUpdate {
-		t.Fatal()
-	}
-}
-
 func Test_page_delete(t *testing.T) {
 	page := newPage(make([]byte, defaultPageSize), 0, pageTypeLeaf)
 	for i := 1; i < 10; i++ {
 		buf := []byte(strconv.Itoa(i))
-		page.add(buf, buf)
+		page.set(buf, buf)
 	}
 
 	tests := []struct {
@@ -211,7 +222,7 @@ func Test_page_min(t *testing.T) {
 	page := newPage(make([]byte, defaultPageSize), 0, pageTypeLeaf)
 	for i := 1; i < 10; i++ {
 		buf := []byte(strconv.Itoa(i))
-		page.add(buf, buf)
+		page.set(buf, buf)
 	}
 
 	key := page.min()
@@ -222,10 +233,9 @@ func Test_page_min(t *testing.T) {
 
 func Test_page_updateMinKey(t *testing.T) {
 	page := newPage(make([]byte, defaultPageSize), 0, pageTypeLeaf)
-	for i := 10; i < 11; i++ {
+	for i := 10; i < 20; i++ {
 		buf := []byte(strconv.Itoa(i))
-		fmt.Println("add", string(buf))
-		page.add(buf, buf)
+		page.set(buf, buf)
 	}
 
 	newMin := []byte("01")
@@ -235,7 +245,6 @@ func Test_page_updateMinKey(t *testing.T) {
 	if !bytes.Equal(key, newMin) {
 		t.Fatal()
 	}
-	page.display()
 }
 
 func Test_page_splitFront(t *testing.T) {
@@ -243,7 +252,7 @@ func Test_page_splitFront(t *testing.T) {
 		page := newPage(make([]byte, defaultPageSize), 0, pageTypeLeaf)
 		for i := 1; i < 9; i++ {
 			buf := []byte(strings.Repeat(strconv.Itoa(i), 196))
-			page.add(buf, buf)
+			page.set(buf, buf)
 		}
 		return page
 	}
@@ -257,14 +266,9 @@ func Test_page_splitFront(t *testing.T) {
 	for i := range args {
 		page := initSpitPage()
 		records := page.splitFront([]byte(args[i]), []byte(args[i]))
-		fmt.Println("add---:", args[i])
-		for _, v := range records {
-			fmt.Println(v)
+		if !isSorted(records) || !isSorted(page.all()) {
+			t.Fatalf("is not sorted, args:%s", args[i])
 		}
-		fmt.Println("---------------")
-		page.display()
-		fmt.Println("================================")
-		fmt.Println()
 	}
 }
 
@@ -273,7 +277,7 @@ func Test_page_splitBehind(t *testing.T) {
 		page := newPage(make([]byte, defaultPageSize), 0, pageTypeLeaf)
 		for i := 1; i < 9; i++ {
 			buf := []byte(strings.Repeat(strconv.Itoa(i), 196))
-			page.add(buf, buf)
+			page.set(buf, buf)
 		}
 		return page
 	}
@@ -288,14 +292,9 @@ func Test_page_splitBehind(t *testing.T) {
 	for i := range args {
 		page := initSpitPage()
 		records, isFront := page.splitBehind([]byte(args[i]), []byte(args[i]))
-		fmt.Println("add---:", args[i], isFront)
-		page.display()
-		fmt.Println("---------------")
-		for _, v := range records {
-			fmt.Println(v)
+		if !isSorted(records) || !isSorted(page.all()) {
+			t.Fatalf("is not sorted, args:%s isFront:%v", args[i], isFront)
 		}
-		fmt.Println("================================")
-		fmt.Println()
 	}
 }
 
@@ -303,7 +302,7 @@ func Test_page_query(t *testing.T) {
 	page := newPage(make([]byte, defaultPageSize), 0, pageTypeLeaf)
 	for i := 1; i < 10; i++ {
 		buf := []byte(strconv.Itoa(i))
-		page.add(buf, buf)
+		page.set(buf, buf)
 	}
 
 	records := page.query(toBytes(1), toBytes(2))
@@ -317,8 +316,10 @@ func Test_page_count(t *testing.T) {
 	page := newPage(make([]byte, defaultPageSize), 0, pageTypeLeaf)
 	for i := 1; i < 10; i++ {
 		buf := []byte(strconv.Itoa(i))
-		page.add(buf, buf)
+		page.set(buf, buf)
 	}
 
-	fmt.Println(page.count())
+	if num := page.count(); num != 9 {
+		t.Fatal(num)
+	}
 }

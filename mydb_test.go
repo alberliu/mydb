@@ -14,14 +14,11 @@ func TestOpen(t *testing.T) {
 	}
 
 	for i := 1; i <= 5; i++ {
-		db.Add(toBytes(i), toBytes(i))
+		_ = db.Set(toBytes(i), toBytes(i))
 	}
 	fmt.Println("add:  ", db.Range(Infinity, Infinity))
 
-	db.Update(toBytes(1), toBytes(4))
-	fmt.Println("update", db.Range(Infinity, Infinity))
-
-	db.Delete(toBytes(1))
+	_ = db.Delete(toBytes(1))
 	fmt.Println("delete", db.Range(Infinity, Infinity))
 
 	fmt.Println("range ", db.Range(toBytes(3), toBytes(4)))

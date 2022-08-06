@@ -34,7 +34,7 @@ func (m *myDB) checkParam(key, value []byte) error {
 	return nil
 }
 
-func (m *myDB) Add(key, value []byte) error {
+func (m *myDB) Set(key, value []byte) error {
 	err := m.checkParam(key, value)
 	if err != nil {
 		return err
@@ -43,20 +43,7 @@ func (m *myDB) Add(key, value []byte) error {
 	m.m.Lock()
 	defer m.m.Unlock()
 
-	m.tree.add(key, value)
-	return nil
-}
-
-func (m *myDB) Update(key, value []byte) error {
-	err := m.checkParam(key, value)
-	if err != nil {
-		return err
-	}
-
-	m.m.Lock()
-	defer m.m.Unlock()
-
-	m.tree.update(key, value)
+	m.tree.set(key, value)
 	return nil
 }
 

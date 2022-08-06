@@ -166,7 +166,7 @@ type statisticsResult struct {
 }
 
 func (s *statisticsResult) String() string {
-	return fmt.Sprintf("filesize:%dB, totalPageNum:%d, branchPageNum:%d, leafPageNum:%d, recyclePageNum:%d, depth:%d, recordNum:%d",
+	return fmt.Sprintf("fileSize:%dB, totalPageNum:%d, branchPageNum:%d, leafPageNum:%d, recyclePageNum:%d, depth:%d, recordNum:%d",
 		s.fileSize, s.fileSize/s.pageSize, s.branchPageNum, s.leafPageNum, s.recyclePageNum, s.depth, s.recordNum)
 }
 

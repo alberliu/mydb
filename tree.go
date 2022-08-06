@@ -15,19 +15,35 @@ func newTree(fm *fileManager) *tree {
 	}
 }
 
-// add 添加
-func (b *tree) add(key, value []byte) bool {
+// set 设置，返回是否是一个新的记录
+func (b *tree) set(key, value []byte) (isNew bool) {
+	isNew = true
+
 	leafPage := b._getLeafPage(key)
+	if leafPage != nil {
+		var isEnoughSpace bool
+		isNew, isEnoughSpace = leafPage.set(key, value)
+		if isEnoughSpace {
+			return
+		}
+	}
+
+	b._add(leafPage, key, value)
+	return
+}
+
+// _add 添加
+func (b *tree) _add(leafPage *page, key, value []byte) bool {
 	if leafPage == nil {
 		front := b.fm.frontPage()
-		_, isEnoughSpace := front.add(key, value)
+		_, isEnoughSpace := front.set(key, value)
 		if isEnoughSpace {
 			// 叶子节点不分裂,添加，并且更新枝干节点最小值
 			b._addToPageParentFront(front, nil)
 		} else {
 			// 叶子节点需要分裂
 			newPage := b.fm.allocatePage(pageTypeLeaf)
-			newPage.add(key, value)
+			newPage.set(key, value)
 
 			newPage.setNext(front.offset)
 			front.setPre(front.offset)
@@ -37,11 +53,7 @@ func (b *tree) add(key, value []byte) bool {
 		}
 		return true
 	} else {
-		isUnique, isEnoughSpace := leafPage.add(key, value)
-		// 有相同数据，直接返回false
-		if !isUnique {
-			return false
-		}
+		_, isEnoughSpace := leafPage.set(key, value)
 		if !isEnoughSpace {
 			records, _ := leafPage.splitBehind(key, value)
 			if len(records) == 0 {
@@ -50,7 +62,7 @@ func (b *tree) add(key, value []byte) bool {
 
 			newPage := b.fm.allocatePage(pageTypeLeaf)
 			for i := range records {
-				newPage.add(records[i].Key, records[i].Value)
+				newPage.set(records[i].Key, records[i].Value)
 			}
 
 			newPage.setPre(leafPage.pre())
@@ -100,7 +112,7 @@ func (b *tree) _addToPageParentFront(page, addedPage *page) {
 
 				newPage := b.fm.allocatePage(pageTypeBranch)
 				for i := range records {
-					newPage.add(records[i].Key, records[i].Value)
+					newPage.set(records[i].Key, records[i].Value)
 
 					page := b.fm.page(records[i].child())
 					page.setParent(newPage.offset)
@@ -115,8 +127,8 @@ func (b *tree) _addToPageParentFront(page, addedPage *page) {
 		if parentOffset == 0 {
 			// root 节点需要分裂
 			newPage := b.fm.allocatePage(pageTypeBranch)
-			newPage.add(addedPage.min(), addedPage.offsetBuf())
-			newPage.add(page.min(), page.offsetBuf())
+			newPage.set(addedPage.min(), addedPage.offsetBuf())
+			newPage.set(page.min(), page.offsetBuf())
 
 			page.setParent(newPage.offset)
 			addedPage.setParent(newPage.offset)
@@ -125,7 +137,7 @@ func (b *tree) _addToPageParentFront(page, addedPage *page) {
 		}
 
 		parent := b.fm.page(parentOffset)
-		_, isEnoughSpace := parent.add(addedPage.min(), addedPage.offsetBuf())
+		_, isEnoughSpace := parent.set(addedPage.min(), addedPage.offsetBuf())
 		if isEnoughSpace {
 			addedPage.setParent(parentOffset)
 
@@ -135,7 +147,7 @@ func (b *tree) _addToPageParentFront(page, addedPage *page) {
 		} else {
 			// 枝干节点节点需要分裂
 			newPage := b.fm.allocatePage(pageTypeBranch)
-			newPage.add(addedPage.min(), addedPage.offsetBuf())
+			newPage.set(addedPage.min(), addedPage.offsetBuf())
 			addedPage.setParent(newPage.offset)
 
 			page = parent
@@ -151,8 +163,8 @@ func (b *tree) _addToPageParentBehind(page, addedPage *page) {
 		if parentOffset == 0 {
 			// page是根节点
 			newPage := b.fm.allocatePage(pageTypeBranch)
-			newPage.add(page.min(), page.offsetBuf())
-			newPage.add(addedPage.min(), addedPage.offsetBuf())
+			newPage.set(page.min(), page.offsetBuf())
+			newPage.set(addedPage.min(), addedPage.offsetBuf())
 
 			page.setParent(newPage.offset)
 			addedPage.setParent(newPage.offset)
@@ -162,7 +174,7 @@ func (b *tree) _addToPageParentBehind(page, addedPage *page) {
 
 		// node是非根节点
 		parent := b.fm.page(parentOffset)
-		_, isEnoughSpace := parent.add(addedPage.min(), addedPage.offsetBuf())
+		_, isEnoughSpace := parent.set(addedPage.min(), addedPage.offsetBuf())
 		if isEnoughSpace {
 			// parent没有分裂
 			addedPage.setParent(parentOffset)
@@ -177,7 +189,7 @@ func (b *tree) _addToPageParentBehind(page, addedPage *page) {
 
 		newPage := b.fm.allocatePage(pageTypeBranch)
 		for i := range records {
-			newPage.add(records[i].Key, records[i].Value)
+			newPage.set(records[i].Key, records[i].Value)
 
 			page := b.fm.page(records[i].child())
 			page.setParent(newPage.offset)
@@ -192,24 +204,6 @@ func (b *tree) _addToPageParentBehind(page, addedPage *page) {
 		page = parent
 		addedPage = newPage
 	}
-}
-
-func (b *tree) update(key, value []byte) bool {
-	leafNode := b._getLeafPage(key)
-	if leafNode == nil {
-		return false
-	}
-
-	isExist, isEnoughSpace := leafNode.update(key, value)
-	if !isExist {
-		return false
-	}
-	if isEnoughSpace {
-		return true
-	}
-
-	b.add(key, value)
-	return true
 }
 
 // delete 如果没有数据了，需要删除节点

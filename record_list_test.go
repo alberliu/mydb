@@ -54,13 +54,13 @@ func Test_appendToSortedRecords(t *testing.T) {
 
 func Test_newRecordList(t *testing.T) {
 	list := newRecordList(initRecordList())
-	list.append(&record{Key: toBytes(0)})
+	list.set(&record{Key: toBytes(0), Value: toBytes(0)})
 	r := list.get(toBytes(0))
-	if r == nil {
+	if r == nil || !bytes.Equal(r.Value, toBytes(0)) {
 		t.Fatal()
 	}
 
-	list.update(&record{Key: toBytes(0), Value: toBytes(1)})
+	list.set(&record{Key: toBytes(0), Value: toBytes(1)})
 	r = list.get(toBytes(0))
 	if r == nil || !bytes.Equal(r.Value, toBytes(1)) {
 		t.Fatal()

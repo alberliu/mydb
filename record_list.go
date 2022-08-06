@@ -24,21 +24,22 @@ func newRecordList(list ...[]*record) *recordList {
 	return &recordList{}
 }
 
-func (l *recordList) append(r *record) (ok bool) {
-	l.list, ok = appendToSortedRecords(l.list, r)
-	return
-}
-
-func (l *recordList) update(r *record) bool {
+func (l *recordList) set(r *record) bool {
 	index := sort.Search(len(l.list), func(i int) bool {
 		return bytes.Compare(l.list[i].Key, r.Key) >= 0
 	})
+	// 不存在
 	if index >= len(l.list) || !bytes.Equal(l.list[index].Key, r.Key) {
-		return false
+		l.list = append(l.list, r)
+		for i := len(l.list) - 1; i > index; i-- {
+			l.list[i] = l.list[i-1]
+		}
+		l.list[index] = r
+		return true
 	}
 
 	l.list[index] = r
-	return true
+	return false
 }
 
 func (l *recordList) delete(key []byte) bool {
