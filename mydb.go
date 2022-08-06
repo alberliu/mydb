@@ -34,17 +34,17 @@ func (m *myDB) checkParam(key, value []byte) error {
 	return nil
 }
 
-func (m *myDB) Set(key, value []byte) error {
-	err := m.checkParam(key, value)
+func (m *myDB) Set(key, value []byte) (isNew bool, err error) {
+	err = m.checkParam(key, value)
 	if err != nil {
-		return err
+		return
 	}
 
 	m.m.Lock()
 	defer m.m.Unlock()
 
-	m.tree.set(key, value)
-	return nil
+	isNew = m.tree.set(key, value)
+	return
 }
 
 func (m *myDB) Delete(key []byte) error {
