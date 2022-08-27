@@ -2,7 +2,9 @@ package mydb
 
 import (
 	"bytes"
+	"fmt"
 	"math/rand"
+	"sort"
 	"strconv"
 	"strings"
 	"testing"
@@ -49,39 +51,28 @@ func Test_page_set(t *testing.T) {
 	for i := 1; i < 10; i++ {
 		buf := []byte(strconv.Itoa(i))
 		page.set(buf, buf)
+		//t.Log(i, page.all())
 	}
 
 	isNew, isEnoughSpace := page.set([]byte("1"), []byte("223"))
-	if !isNew || !isEnoughSpace {
-		t.Fatal()
+	if isNew || !isEnoughSpace {
+		t.Fatalf("isNew:%v,isEnoughSpace:%v", isNew, isEnoughSpace)
 	}
+	t.Log(page.all())
+	t.Log(page._dirAll())
 	value, ok := page.get([]byte("1"))
 	if !ok || !bytes.Equal(value, []byte("223")) {
 		t.Fatalf("value:%s ok:%v\n", string(value), ok)
 	}
 
 	isNew, _ = page.set([]byte("101"), []byte("101"))
-	if isNew {
+	if !isNew {
 		t.Fatal()
 	}
 	value, ok = page.get([]byte("101"))
 	if !ok || !bytes.Equal(value, []byte("101")) {
 		t.Fatalf("value:%s ok:%v\n", string(value), ok)
 	}
-}
-
-func Test_page_set_increment(t *testing.T) {
-	page := newPage(make([]byte, defaultPageSize), 0, pageTypeLeaf)
-	mock := newRecordList()
-
-	for i := 1; i < 100; i++ {
-		buf := []byte(strconv.Itoa(i))
-		page.set(buf, buf)
-
-		mock.set(&record{Key: buf, Value: buf})
-	}
-
-	mock.assertMatch(t, page.all(), nil)
 }
 
 func Test_page_set_rand(t *testing.T) {
@@ -94,7 +85,7 @@ func Test_page_set_rand(t *testing.T) {
 	rand.Seed(seed)
 	t.Log("seed:", seed)
 	for i := 1; i < 1000; i++ {
-		buf := []byte(strconv.Itoa(rand.Intn(100)))
+		buf := []byte(strconv.Itoa(rand.Intn(1000)))
 
 		isNew, isEnoughSpace := page.set(buf, buf)
 		if isEnoughSpace {
@@ -106,6 +97,36 @@ func Test_page_set_rand(t *testing.T) {
 
 		mock.assertMatch(t, page.all(), buf)
 	}
+}
+
+func Test_page_set_increment(t *testing.T) {
+	page := newPage(make([]byte, defaultPageSize), 0, pageTypeLeaf)
+	mock := newRecordList()
+
+	for i := 0; i < 100; i++ {
+		if i == 19 {
+			fmt.Println("")
+		}
+
+		buf := []byte(fmt.Sprintf("%03d", i))
+		page.set(buf, buf)
+
+		mock.set(&record{Key: buf, Value: buf})
+
+		allDir := page._dirAll()
+		dirIsSort := sort.SliceIsSorted(allDir, func(i, j int) bool {
+			return bytes.Compare(allDir[i].key, allDir[j].key) < 0
+		})
+		//if !dirIsSort {
+		t.Log("add:", i)
+		t.Log(dirIsSort)
+		t.Log(allDir)
+		//}
+
+		mock.assertMatch(t, page.all(), toBytes(i))
+	}
+
+	mock.assertMatch(t, page.all(), nil)
 }
 
 func Test_page_getFreeSpace(t *testing.T) {
@@ -321,5 +342,62 @@ func Test_page_count(t *testing.T) {
 
 	if num := page.count(); num != 9 {
 		t.Fatal(num)
+	}
+}
+
+func Test_page_complex_rand_repeat(t *testing.T) {
+	for {
+		Test_page_complex_rand(t)
+	}
+}
+
+// Test_page_complex_rand page随机测试
+// bug seed 1661320114471
+// 3628 3608
+func Test_page_complex_rand(t *testing.T) {
+	seed := time.Now().UnixMilli()
+	rand.Seed(seed)
+	t.Log("seed:", seed)
+
+	page := newPage(make([]byte, defaultPageSize), 0, pageTypeLeaf)
+	mock := newRecordList()
+	for i := 1; i < 10000; i++ {
+		key := toBytes(rand.Intn(10000))
+		switch rand.Intn(2) {
+		case 0:
+			value := toBytes(rand.Intn(10000))
+			//if bytes.Equal(key, toBytes(9949)) {
+			//t.Log(string(key), string(value))
+			//}
+			isNew, isEnoughSpace := page.set(key, value)
+			if isEnoughSpace {
+				mockIsNew := mock.set(&record{Key: key, Value: value})
+				if isNew != mockIsNew {
+					t.Fatal()
+				}
+			} else {
+				if !isNew {
+					mock.delete(key)
+				}
+			}
+		case 1:
+			//if bytes.Equal(key, toBytes(0)) {
+			//	t.Log(string(key))
+			//}
+			ok := page.delete(key)
+			mockok := mock.delete(key)
+			if ok != mockok {
+				t.Fatal()
+			}
+		}
+
+		all := page.all()
+		ok, errorMsg := mock.isMatch(all, key)
+		if !ok {
+			t.Log(page._dirAll())
+			t.Log("l", mock.list)
+			t.Log("t", all)
+			t.Fatal(errorMsg)
+		}
 	}
 }

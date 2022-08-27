@@ -3,6 +3,7 @@ package mydb
 import (
 	"bytes"
 	"fmt"
+	"math"
 	"math/rand"
 	"os"
 	"strconv"
@@ -20,30 +21,77 @@ func newDefaultTree() *tree {
 	return newTree(fm)
 }
 
-// Test_tree_complex_rand 综合随机测试
-func Test_tree_complex_rand(t *testing.T) {
-	tree := newDefaultTree()
-	mock := newRecordList()
-
+// Test_tree_fuzz 模糊测试
+func Test_tree_fuzz(t *testing.T) {
 	seed := time.Now().Unix()
 	t.Log("seed", seed)
 	rand.Seed(seed)
 
-	for i := 0; i < 100000; i++ {
+	tree := newDefaultTree()
+	mock := newRecordList()
+
+	count := 0
+	for {
+		key := toBytes(rand.Intn(math.MaxInt))
+		switch rand.Intn(2) {
+		case 0:
+			value := toBytes(rand.Intn(math.MaxInt))
+			tree.set(key, value)
+			mock.set(&record{Key: key, Value: value})
+		case 1:
+			tree.delete(key)
+			mock.delete(key)
+		}
+
+		if count%10000 == 0 {
+			t.Log(count)
+			mock.assertMatch(t, tree.all(), nil)
+			t.Log(tree.fm.statisticsPage())
+		}
+		count++
+	}
+}
+
+func Test_tree_complex_rand_repeat(t *testing.T) {
+	i := 1
+	for {
+		Test_tree_complex_rand(t)
+
+		t.Log("test count:", i)
+		i++
+		time.Sleep(time.Second * 5)
+	}
+}
+
+// Test_tree_complex_rand 综合随机测试
+// bug seed 1661230801
+func Test_tree_complex_rand(t *testing.T) {
+	seed := time.Now().Unix()
+	t.Log("seed", seed)
+	rand.Seed(seed)
+
+	const count = 100000
+
+	tree := newDefaultTree()
+	defer tree.fm.file.Close()
+
+	mock := newRecordList()
+
+	for i := 0; i < count; i++ {
 		if i%10000 == 0 {
 			t.Log(i)
 		}
 
-		r := toBytes(rand.Intn(10000))
+		key := toBytes(rand.Intn(count))
 		switch rand.Intn(2) {
 		case 0:
-			tree.set(r, r)
-			mock.set(&record{Key: r, Value: r})
+			value := toBytes(rand.Intn(count))
+			tree.set(key, value)
+			mock.set(&record{Key: key, Value: value})
 		case 1:
-			tree.delete(r)
-			mock.delete(r)
+			tree.delete(key)
+			mock.delete(key)
 		}
-
 	}
 
 	mock.assertMatch(t, tree.all(), nil)
@@ -51,15 +99,14 @@ func Test_tree_complex_rand(t *testing.T) {
 }
 
 func Test_tree_add_rand(t *testing.T) {
-	tree := newDefaultTree()
-	mock := newRecordList()
-
 	seed := time.Now().Unix()
 	t.Log("seed", seed)
 	rand.Seed(seed)
 
-	for i := 0; i <= 10000; i++ {
-		if i%1000 == 0 {
+	tree := newDefaultTree()
+	mock := newRecordList()
+	for i := 0; i <= 100000; i++ {
+		if i%10000 == 0 {
 			t.Log(i)
 		}
 
@@ -124,7 +171,7 @@ func Test_tree_add_tail(t *testing.T) {
 	for i := 0; i < 50000; i++ {
 		data := []byte(fmt.Sprintf("%6d", i))
 		if i%10000 == 0 {
-			t.Log(string(data))
+			t.Log("add", string(data))
 		}
 
 		tree.set(data, data)
@@ -216,35 +263,6 @@ func Test_tree_query(t *testing.T) {
 	}
 }
 
-func Test_tree_get_init_data(t *testing.T) {
-	tree := newDefaultTree()
-	now := time.Now()
-	for i := 1; i <= 1000000; i++ {
-		if i%100000 == 0 {
-			t.Log(i)
-		}
-
-		data := []byte(strconv.Itoa(i))
-		tree.set(data, data)
-	}
-
-	t.Logf("cost:%v tps:%v", time.Now().Sub(now), 1000000/time.Now().Sub(now).Seconds())
-	t.Log(tree.fm.statisticsPage())
-}
-
-func Benchmark_tree_get(b *testing.B) {
-	fm, err := newFileManager("data.txt", defaultPageSize)
-	if err != nil {
-		panic(err)
-	}
-	tree := newTree(fm)
-
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		tree.get([]byte(strconv.Itoa(rand.Intn(1000000))))
-	}
-}
-
 func Test_tree__display(t *testing.T) {
 	tree := newDefaultTree()
 	for i := 0; i <= 100; i++ {
@@ -268,6 +286,39 @@ func Test_tree_count(t *testing.T) {
 	}
 }
 
-func TestName(t *testing.T) {
-	fmt.Println(int(time.Second / 37631))
+// old 14345
+// new 36205
+func Test_tree_get_init_data(t *testing.T) {
+	tree := newDefaultTree()
+	now := time.Now()
+	for i := 1; i <= 1000000; i++ {
+		if i%100000 == 0 {
+			t.Log(i)
+		}
+
+		data := []byte(strconv.Itoa(i))
+		tree.set(data, data)
+	}
+
+	t.Logf("cost:%v tps:%v", time.Since(now), 1000000/time.Since(now).Seconds())
+	t.Log(tree.fm.statisticsPage())
+}
+
+// old 26573
+// new 45018
+func Benchmark_tree_get(b *testing.B) {
+	fm, err := newFileManager("data.txt", defaultPageSize)
+	if err != nil {
+		panic(err)
+	}
+	tree := newTree(fm)
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		tree.get([]byte(strconv.Itoa(rand.Intn(1000000))))
+	}
+}
+
+func TestTime(t *testing.T) {
+	fmt.Println(int(time.Second / 23364))
 }

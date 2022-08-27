@@ -63,10 +63,6 @@ func (f *fileManager) rootPage() *page {
 		panic(err)
 	}
 	index := binary.BigEndian.Uint64(buf[rootBegin:])
-	if index == 8 {
-		log.Println(buf[0:32])
-		panic(index)
-	}
 	return f.page(index)
 }
 
@@ -104,7 +100,7 @@ func (f *fileManager) page(offset uint64) *page {
 		log.Println(err, offset)
 		panic(err)
 	}
-	return &page{offset: offset, buf: buf}
+	return &page{offset: offset, buf: buf, size: uint16(len(buf))}
 }
 
 // allocatePage 分配页空间，首先会尝试从回收空间分配，再申请新的磁盘空间

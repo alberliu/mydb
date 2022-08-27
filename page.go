@@ -25,19 +25,31 @@ const (
 	flag8Next   = 16 // 页后置节点位置
 
 	flag2Type         = 32 // 页类型
-	flag2RecordBegin  = 34 // 记录开始位置
+	flag2RecordBegin  = 34 // 记录空间开始位置
 	flag2RecycleBegin = 36 // 回收空间开始位置
 	flag2FreeBegin    = 38 // 空闲空间开始位置
+	flag2DirBegin     = 40 // 目录空间开始位置
 )
 
 type page struct {
-	offset uint64
-	buf    []byte
+	offset      uint64
+	buf         []byte
+	size        uint16
+	minDirBegin uint16
 }
 
-func newPage(buf []byte, offset uint64, t uint16) *page {
-	p := &page{offset: offset, buf: buf}
-	p._setIndexByFlag2(flag2Type, t)
+func newPage(buf []byte, offset uint64, pageType uint16) *page {
+	p := &page{
+		offset: offset,
+		buf:    buf,
+		size:   uint16(len(buf)),
+	}
+
+	p.minDirBegin = (p.size - recordsDefaultBegin) / 2 / 8
+	p._setIndexByFlag2(flag2Type, pageType)
+	if p.size == 0 {
+		panic("size == 0")
+	}
 	return p
 }
 
@@ -88,94 +100,101 @@ func (p *page) setNext(index uint64) {
 }
 
 func (p *page) get(key []byte) ([]byte, bool) {
-	_, current := p.currentRecord(key)
-	if current == nil || !bytes.Equal(current.Key, key) {
+	_, r := p.find(key)
+	if r == nil || !bytes.Equal(r.Key, key) {
 		return nil, false
 	}
 
-	return current.Value, true
+	return r.Value, true
 }
 
-// update 更新
+// set 设置
 // isNew 是否是新纪录
 // isEnoughSpace 是否空间足够
 func (p *page) set(key, value []byte) (isNew bool, isEnoughSpace bool) {
-	r := &record{
-		Key:   key,
-		Value: value,
-	}
+	isEnoughSpace = true
+	dir, current := p.find(key)
 
-	isNew = true
-	pre, current := p.currentRecord(key)
-	// record存在
-	if current != nil && bytes.Equal(current.Key, key) {
-		r.spaceLen = current.spaceLen
-		r.next = current.next
-		r.offset = current.offset
-
-		// 原地址空间符合，直接更新
-		if current.spaceLen >= r.needSpaceLen() {
-			p._setRecordOnOffset(r)
+	// record存在且原地址空间符合，直接更新
+	isNew = current == nil || !bytes.Equal(current.Key, key)
+	if !isNew {
+		new := *current
+		new.Value = value
+		if new.needSpaceLen() <= current.spaceLen {
+			p._setRecord(&new)
 			isEnoughSpace = true
 			return
 		}
 
-		// 删除record
-		if pre == nil {
-			p._setIndexByFlag2(flag2RecordBegin, current.next)
-		} else {
-			pre.next = current.next
-			p._setRecordOnOffset(pre)
-		}
-		// 回收空间
-		p._recycle(current)
-		isNew = false
+		p._deleteRecord(*current)
+
+		p._dirDelete(*dir, *current)
+		// 这里可能删除目录，或者目录产生移位，还可能目录合并，需要重新获取
+		dir = p._dirFind(key)
 	}
 
 	// 原地址空间不符合或者记录不存在，需要添加
-	offset, spaceLen, ok := p._getSpace(r.needSpaceLen())
-	// 页空间符合
-	if ok {
-		r.offset = offset
-		r.spaceLen = spaceLen
-		if r.next == 0 {
-			if pre != nil {
-				r.next = pre.next
-			} else {
-				r.next = p._indexByFlag2(flag2RecordBegin)
-			}
-		}
-		p._setRecordOnOffset(r)
-
-		// 更新pre record的next
-		if pre != nil {
-			pre.next = offset
-			p._setRecordOnOffset(pre)
+	// 找到添加pre位置
+	preOffset := uint16(0)
+	if current != nil {
+		if isNew {
+			preOffset = current.offset
 		} else {
-			p._setIndexByFlag2(flag2RecordBegin, offset)
+			preOffset = current.pre
 		}
-
-		isEnoughSpace = true
-		return
 	}
 
-	isEnoughSpace = false
+	new := &record{Key: key, Value: value}
+	offset, spaceLen, ok := p._getSpace(new.needSpaceLen())
+	if !ok {
+		// 这里存在更新的时候，空间不足的情况
+		isEnoughSpace = false
+		return
+	}
+	new.offset = offset
+	new.spaceLen = spaceLen
+	if preOffset == 0 {
+		recordBegin := p._indexByFlag2(flag2RecordBegin)
+		p._setIndexByFlag2(flag2RecordBegin, new.offset)
+
+		new.pre = 0
+		new.next = recordBegin
+		p._setRecord(new)
+
+		if recordBegin != 0 {
+			next := p._record(recordBegin)
+			next.pre = new.offset
+			p._setRecord(next)
+		}
+	} else {
+		pre := p._record(preOffset)
+		preNext := pre.next
+		pre.next = new.offset
+		p._setRecord(pre)
+
+		new.pre = pre.offset
+		new.next = preNext
+		p._setRecord(new)
+
+		if preNext != 0 {
+			next := p._record(preNext)
+			next.pre = new.offset
+			p._setRecord(next)
+		}
+	}
+
+	p._dirAdd(dir, new)
 	return
 }
 
 func (p *page) delete(key []byte) bool {
-	pre, current := p.currentRecord(key)
-	if current == nil || !bytes.Equal(current.Key, key) {
+	d, r := p.find(key)
+	if r == nil || !bytes.Equal(r.Key, key) {
 		return false
 	}
-	if pre == nil {
-		p._setIndexByFlag2(flag2RecordBegin, current.next)
-	} else {
-		pre.next = current.next
-		p._setRecordOnOffset(pre)
-	}
 
-	p._recycle(current)
+	p._deleteRecord(*r)
+	p._dirDelete(*d, *r)
 	return true
 }
 
@@ -271,52 +290,32 @@ func (p *page) query(min, max []byte) []*record {
 	return records
 }
 
-// currentRecord 查找key所在的pre record 和 current record
-// 节点为空     preRecord == nil, current == nil
-// 小于所有元素  preRecord == nil, current != nil,此时current为第一个record
-// 中间         preRecord != nil, current != nil
-// 大于所有元素  preRecord != nil && preRecord.next = 0 current == preRecord
-func (p *page) currentRecord(key []byte) (pre, current *record) {
-	offset := p._indexByFlag2(flag2RecordBegin)
-	if offset == 0 {
-		return
+// preRecord 查找key所在的pre record 和 current record
+// 页为空或注射小于所有元素     return == nil
+// 中间                      return != nil return.key<=key
+// 大于所有元素               返回最后一个元素
+func (p *page) find(key []byte) (*dir, *record) {
+	dir := p._dirFind(key)
+	if dir == nil {
+		return nil, nil
 	}
+
+	offset := dir.recordOffset
+	r := p._record(offset)
+	if bytes.Compare(r.Key, key) > 0 {
+		return dir, nil
+	}
+
 	for {
-		current = p._record(offset)
-		if bytes.Compare(current.Key, key) >= 0 {
-			break
+		if r.next == 0 {
+			return dir, r
 		}
-
-		pre = current
-		if current.next == 0 {
-			break
+		next := p._record(r.next)
+		if bytes.Compare(next.Key, key) > 0 {
+			return dir, r
 		}
-		offset = current.next
+		r = next
 	}
-	return
-}
-
-func (p *page) preRecord(key []byte) (pre *record) {
-
-	offset := p._indexByFlag2(flag2RecordBegin)
-	if offset == 0 {
-		return
-	}
-
-	var current *record
-	for {
-		current = p._record(offset)
-		if bytes.Compare(current.Key, key) > 0 {
-			break
-		}
-
-		pre = current
-		if current.next == 0 {
-			break
-		}
-		offset = current.next
-	}
-	return
 }
 
 func (p *page) all() []*record {
@@ -374,20 +373,21 @@ func (p *page) _setIndexByFlag8(flag int, value uint64) {
 }
 
 func (p *page) _recordMaxSize() uint16 {
-	return recordMaxSize(uint16(len(p.buf)))
+	return recordMaxSize(p.size)
 }
 
 func (p *page) _reset() {
 	p._setIndexByFlag2(flag2RecordBegin, 0)
 	p._setIndexByFlag2(flag2RecycleBegin, 0)
 	p._setIndexByFlag2(flag2FreeBegin, 0)
+	p._setIndexByFlag2(flag2DirBegin, 0)
 }
 
 // _recycle 回收record空间
 func (p *page) _recycle(record *record) {
 	recycleBegin := p._indexByFlag2(flag2RecycleBegin)
 	record.next = recycleBegin
-	p._setRecordOnOffset(record)
+	p._setRecord(record)
 	p._setIndexByFlag2(flag2RecycleBegin, record.offset)
 }
 
@@ -428,7 +428,7 @@ func (p *page) _getRecycleSpace(needSpaceLen uint16) (spaceOffset uint16, spaceL
 		// 读取spaceLen
 		spaceLen = binary.BigEndian.Uint16(p.buf[spaceOffset:])
 		// 读取nextIndex
-		nextIndex = binary.BigEndian.Uint16(p.buf[spaceOffset+2:])
+		nextIndex = binary.BigEndian.Uint16(p.buf[spaceOffset+4:])
 
 		if spaceLen >= needSpaceLen {
 			break
@@ -447,7 +447,7 @@ func (p *page) _getRecycleSpace(needSpaceLen uint16) (spaceOffset uint16, spaceL
 		ok = true
 		return
 	}
-	binary.BigEndian.PutUint16(p.buf[preOffset+2:], nextIndex)
+	binary.BigEndian.PutUint16(p.buf[preOffset+4:], nextIndex)
 	ok = true
 	return
 }
@@ -457,9 +457,14 @@ func (p *page) _getFreeSpace(needSpaceLen uint16) (spaceOffset uint16, spaceLen 
 	if freeBegin == 0 {
 		freeBegin = recordsDefaultBegin
 	}
+
+	dirBegin := p._indexByFlag2(flag2DirBegin)
+	if dirBegin == 0 {
+		dirBegin = p.size
+	}
+
 	// 剩余空闲空间检查
-	pageSize := uint16(len(p.buf))
-	if pageSize-freeBegin < needSpaceLen {
+	if dirBegin-freeBegin < needSpaceLen {
 		ok = false
 		return
 	}
@@ -468,25 +473,28 @@ func (p *page) _getFreeSpace(needSpaceLen uint16) (spaceOffset uint16, spaceLen 
 	return freeBegin, needSpaceLen, true
 }
 
-// _setRecordOnOffset 在指定偏移量上设置记录
-func (p *page) _setRecordOnOffset(record *record) {
+// _setRecord 在指定偏移量上设置记录
+func (p *page) _setRecord(record *record) {
 	offset := record.offset
 	// 设置spaceLen
 	binary.BigEndian.PutUint16(p.buf[offset:], record.spaceLen)
+	// 设置pre
 	offset += 2
-	// 设置nextIndex
+	binary.BigEndian.PutUint16(p.buf[offset:], record.pre)
+	// 设置next
+	offset += 2
 	binary.BigEndian.PutUint16(p.buf[offset:], record.next)
-	offset += 2
 	// 设置keyLen
+	offset += 2
 	binary.BigEndian.PutUint16(p.buf[offset:], uint16(len(record.Key)))
-	offset += 2
 	// 设置valueLen
-	binary.BigEndian.PutUint16(p.buf[offset:], uint16(len(record.Value)))
 	offset += 2
+	binary.BigEndian.PutUint16(p.buf[offset:], uint16(len(record.Value)))
 	// 设置key
+	offset += 2
 	copy(p.buf[offset:], record.Key)
-	offset += uint16(len(record.Key))
 	// 设置value
+	offset += uint16(len(record.Key))
 	copy(p.buf[offset:], record.Value)
 }
 
@@ -497,24 +505,45 @@ func (p *page) _record(offset uint16) *record {
 
 	// 读取spaceLen
 	record.spaceLen = binary.BigEndian.Uint16(p.buf[offset:])
+	// 读取pre
 	offset += 2
-	// 读取nextIndex
+	record.pre = binary.BigEndian.Uint16(p.buf[offset:])
+	// 读取next
+	offset += 2
 	record.next = binary.BigEndian.Uint16(p.buf[offset:])
-	offset += 2
 	// 读取keyLen
+	offset += 2
 	keyLen := binary.BigEndian.Uint16(p.buf[offset:])
-	offset += 2
 	// 读取valueLen
-	valueLen := binary.BigEndian.Uint16(p.buf[offset:])
 	offset += 2
+	valueLen := binary.BigEndian.Uint16(p.buf[offset:])
 	// 读取key
+	offset += 2
 	record.Key = make([]byte, keyLen)
 	copy(record.Key, p.buf[offset:offset+keyLen])
-	offset += keyLen
 	// 读取value
+	offset += keyLen
 	record.Value = make([]byte, valueLen)
 	copy(record.Value, p.buf[offset:offset+valueLen])
 
 	record.pageOffset = p.offset
 	return &record
+}
+
+func (p *page) _deleteRecord(r record) {
+	if r.pre != 0 {
+		pre := p._record(r.pre)
+		pre.next = r.next
+		p._setRecord(pre)
+	} else {
+		p._setIndexByFlag2(flag2RecordBegin, r.next)
+	}
+
+	if r.next != 0 {
+		next := p._record(r.next)
+		next.pre = r.pre
+		p._setRecord(next)
+	}
+
+	p._recycle(&r)
 }

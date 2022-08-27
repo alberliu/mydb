@@ -64,21 +64,21 @@ func Test_tree_get_init_data(t *testing.T) {
 }
 ```
 测试结果：
-```azure
-=== RUN   Test_tree_get
-    tree_test.go:224: 100000
-    tree_test.go:224: 200000
-    tree_test.go:224: 300000
-    tree_test.go:224: 400000
-    tree_test.go:224: 500000
-    tree_test.go:224: 600000
-    tree_test.go:224: 700000
-    tree_test.go:224: 800000
-    tree_test.go:224: 900000
-    tree_test.go:224: 1000000
-    tree_test.go:231: cost:1m9.706646778s tps:14345.834190975898
-    tree_test.go:232: fileSize:39809024B, totalPageNum:9719, branchPageNum:98, leafPageNum:9620, recyclePageNum:0, depth:3, recordNum:1000000
---- PASS: Test_tree_get (70.09s)
+```
+=== RUN   Test_tree_get_init_data
+    tree_test.go:296: 100000
+    tree_test.go:296: 200000
+    tree_test.go:296: 300000
+    tree_test.go:296: 400000
+    tree_test.go:296: 500000
+    tree_test.go:296: 600000
+    tree_test.go:296: 700000
+    tree_test.go:296: 800000
+    tree_test.go:296: 900000
+    tree_test.go:296: 1000000
+    tree_test.go:303: cost:28.372586518s tps:35245.288388313376
+    tree_test.go:304: fileSize:44253184B, totalPageNum:10804, branchPageNum:126, leafPageNum:10677, recyclePageNum:0, depth:3, recordNum:1000000
+--- PASS: Test_tree_get_init_data (28.72s)
 ```
 #### 100万数据下的随机查询
 测试代码：  
@@ -97,8 +97,8 @@ func Benchmark_tree_get(b *testing.B) {
 }
 ```
 测试结果： 
-```azure
-Benchmark_tree_get
-Benchmark_tree_get-4   	   30940	     37631 ns/op
 ```
-总结：在以上描述的场景下，写入性能14345次每秒，查询性能26573次每秒
+Benchmark_tree_get
+Benchmark_tree_get-6   	   49418	     23364 ns/op
+```
+总结：在以上描述的场景下，写入性能35245次每秒，查询性能42800次每秒

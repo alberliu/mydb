@@ -1,10 +1,14 @@
 package mydb
 
 import (
-	"fmt"
+	"log"
 	"os"
 	"testing"
 )
+
+func init() {
+	log.SetFlags(log.Lshortfile)
+}
 
 func TestOpen(t *testing.T) {
 	os.Remove("data")
@@ -16,10 +20,10 @@ func TestOpen(t *testing.T) {
 	for i := 1; i <= 5; i++ {
 		_, _ = db.Set(toBytes(i), toBytes(i))
 	}
-	fmt.Println("set:  ", db.Range(Infinity, Infinity))
+	log.Println("set:  ", db.Range(Infinity, Infinity))
 
 	_ = db.Delete(toBytes(1))
-	fmt.Println("delete", db.Range(Infinity, Infinity))
+	log.Println("delete", db.Range(Infinity, Infinity))
 
-	fmt.Println("range ", db.Range(toBytes(3), toBytes(4)))
+	log.Println("range ", db.Range(toBytes(3), toBytes(4)))
 }

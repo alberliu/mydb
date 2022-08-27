@@ -8,10 +8,23 @@ import (
 
 var Infinity = []byte("")
 
+/**
+record 物理存储结构
+spaceLen 空间大小
+pre      上一个记录位置
+next     下一个记录位置
+keyLen   key的长度
+valueLen value的长度
+key      key
+value    value
+*/
+
+// record 记录
 type record struct {
 	Key        []byte
 	Value      []byte
 	spaceLen   uint16
+	pre        uint16
 	next       uint16
 	offset     uint16
 	pageOffset uint64
@@ -32,7 +45,7 @@ func (r *record) match(min, max []byte) bool {
 }
 
 func (r *record) needSpaceLen() uint16 {
-	return uint16(8) + uint16(len(r.Key)+len(r.Value))
+	return uint16(10) + uint16(len(r.Key)+len(r.Value))
 }
 
 func (r *record) child() uint64 {
@@ -44,5 +57,5 @@ func (r *record) display() {
 }
 
 func (r *record) String() string {
-	return fmt.Sprintf("{Key:%s:Value:%s}", string(r.Key), string(r.Value))
+	return fmt.Sprintf("{Key:%s,Value:%s,next%4d %4d}", string(r.Key), string(r.Value), r.next, r.offset)
 }

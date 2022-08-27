@@ -85,7 +85,7 @@ func (b *tree) _getLeafPage(key []byte) *page {
 
 	page := b.fm.rootPage()
 	for page.pageType() != pageTypeLeaf {
-		pre := page.preRecord(key)
+		_, pre := page.find(key)
 		page = b.fm.page(pre.child())
 	}
 	return page

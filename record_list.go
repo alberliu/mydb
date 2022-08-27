@@ -70,7 +70,7 @@ func (l *recordList) isMatch(target []*record, r []byte) (bool, string) {
 	}
 	for i, v := range l.list {
 		if !bytes.Equal(v.Key, target[i].Key) || !bytes.Equal(v.Value, target[i].Value) {
-			return false, fmt.Sprintf("not match len:%d i:%d l1:%v l2:%v r:%s", len(l.list), i, v, target[i], string(r))
+			return false, fmt.Sprintf("record not match len:%d i:%d l1:%v l2:%v r:%s", len(l.list), i, v, target[i], string(r))
 		}
 	}
 	return true, ""
@@ -79,6 +79,8 @@ func (l *recordList) isMatch(target []*record, r []byte) (bool, string) {
 func (l *recordList) assertMatch(t *testing.T, target []*record, r []byte) {
 	ok, errorMsg := l.isMatch(target, r)
 	if !ok {
+		t.Log("l", l.list)
+		t.Log("t", target)
 		t.Fatal(errorMsg)
 	}
 }
