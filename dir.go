@@ -305,7 +305,7 @@ func (p *page) _dirPre(offset uint16) *dir {
 	return p._dirGet(offset + dirHeaderLen + keyLen)
 }
 
-// _dirFind 找到对应的目录，如果目录为空，返回空，如果小于目录总的最小值，返回空
+// _dirFind 找到对应的目录，如果目录为空或如果小于目录总的最小值，返回nil
 func (p *page) _dirFind(key []byte) *dir {
 	dirBegin := p._indexByFlag2(flag2DirBegin)
 	if dirBegin == 0 {
@@ -316,7 +316,6 @@ func (p *page) _dirFind(key []byte) *dir {
 	offset := p.size
 	for {
 		dir := p._dirGet(offset)
-
 		if bytes.Compare(dir.key, key) > 0 {
 			return pre
 		}

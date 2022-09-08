@@ -3,7 +3,6 @@ package mydb
 import (
 	"bytes"
 	"fmt"
-	"math"
 	"math/rand"
 	"os"
 	"strconv"
@@ -32,10 +31,10 @@ func Test_tree_fuzz(t *testing.T) {
 
 	count := 0
 	for {
-		key := toBytes(rand.Intn(math.MaxInt))
+		key := toBytes(rand.Intn(100000000))
 		switch rand.Intn(2) {
 		case 0:
-			value := toBytes(rand.Intn(math.MaxInt))
+			value := toBytes(rand.Intn(100000000))
 			tree.set(key, value)
 			mock.set(&record{Key: key, Value: value})
 		case 1:
@@ -43,7 +42,7 @@ func Test_tree_fuzz(t *testing.T) {
 			mock.delete(key)
 		}
 
-		if count%10000 == 0 {
+		if count%100000 == 0 {
 			t.Log(count)
 			mock.assertMatch(t, tree.all(), nil)
 			t.Log(tree.fm.statisticsPage())

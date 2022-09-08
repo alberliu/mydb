@@ -270,30 +270,31 @@ func (p *page) splitBehind(key, value []byte) ([]*record, bool) {
 }
 
 func (p *page) query(min, max []byte) []*record {
-	offset := p._indexByFlag2(flag2RecordBegin)
-	if offset == 0 {
-		return nil
-	}
-
 	records := make([]*record, 0, 10)
-	for {
-		record := p._record(offset)
-		if record.match(min, max) {
-			records = append(records, record)
+	_, r := p.find(min)
+	if r == nil {
+		recordBegin := p._indexByFlag2(flag2RecordBegin)
+		if recordBegin == 0 {
+			return nil
 		}
-
-		offset = record.next
-		if offset == 0 {
+		r = p._record(recordBegin)
+	}
+	for {
+		if r.match(min, max) {
+			records = append(records, r)
+		}
+		if r.next == 0 {
 			break
 		}
+		r = p._record(r.next)
 	}
 	return records
 }
 
-// preRecord 查找key所在的pre record 和 current record
-// 页为空或注射小于所有元素     return == nil
-// 中间                      return != nil return.key<=key
-// 大于所有元素               返回最后一个元素
+// find 查找key所在的directory以及record，record.key =< key
+// 页为空或或者key小于所有元素      dir == nil record == nil
+// 中间                         dir != nil record != nil
+// 大于所有元素                  dir == last_dir record == last record
 func (p *page) find(key []byte) (*dir, *record) {
 	dir := p._dirFind(key)
 	if dir == nil {
@@ -302,9 +303,6 @@ func (p *page) find(key []byte) (*dir, *record) {
 
 	offset := dir.recordOffset
 	r := p._record(offset)
-	if bytes.Compare(r.Key, key) > 0 {
-		return dir, nil
-	}
 
 	for {
 		if r.next == 0 {

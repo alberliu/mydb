@@ -95,6 +95,19 @@ func isSorted(list []*record) bool {
 	return true
 }
 
+func isEqualRecords(r1, r2 []*record) bool {
+	if len(r1) != len(r2) {
+		return false
+	}
+
+	for i, v := range r1 {
+		if !bytes.Equal(v.Key, r2[i].Key) || !bytes.Equal(v.Value, r2[i].Value) {
+			return false
+		}
+	}
+	return true
+}
+
 func appendToSortedRecords(l []*record, r *record) ([]*record, bool) {
 	index := sort.Search(len(l), func(i int) bool {
 		return bytes.Compare(l[i].Key, r.Key) >= 0

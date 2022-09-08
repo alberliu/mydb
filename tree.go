@@ -283,27 +283,27 @@ func (b *tree) query(min, max []byte) []*record {
 			page = b.fm.page(page.pre())
 		}
 		return records
-	} else {
-		page := b._getLeafPage(min)
-		if page == nil {
-			return nil
-		}
-
-		var records []*record
-		for {
-			result := page.query(min, max)
-			if len(result) == 0 {
-				return records
-			}
-			records = append(records, result...)
-
-			if page.next() == 0 {
-				break
-			}
-			page = b.fm.page(page.next())
-		}
-		return records
 	}
+
+	page := b._getLeafPage(min)
+	if page == nil {
+		return nil
+	}
+
+	var records []*record
+	for {
+		result := page.query(min, max)
+		if len(result) == 0 {
+			return records
+		}
+		records = append(records, result...)
+
+		if page.next() == 0 {
+			break
+		}
+		page = b.fm.page(page.next())
+	}
+	return records
 }
 
 func (b *tree) all() []*record {

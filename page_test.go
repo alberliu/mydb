@@ -326,10 +326,37 @@ func Test_page_query(t *testing.T) {
 		page.set(buf, buf)
 	}
 
-	records := page.query(toBytes(1), toBytes(2))
-	t.Log(records)
-	if len(records) != 2 {
-		t.Fatal()
+	type args struct {
+		min []byte
+		max []byte
+	}
+	tests := []struct {
+		name string
+		args args
+		want []*record
+	}{
+		{
+			args: args{min: toBytes(0), max: toBytes(2)},
+			want: []*record{
+				{Key: toBytes(1), Value: toBytes(1)},
+				{Key: toBytes(2), Value: toBytes(2)},
+			},
+		},
+		{
+			args: args{min: toBytes(1), max: toBytes(2)},
+			want: []*record{
+				{Key: toBytes(1), Value: toBytes(1)},
+				{Key: toBytes(2), Value: toBytes(2)},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gots := page.query(tt.args.min, tt.args.max)
+			if !isEqualRecords(gots, tt.want) {
+				t.Fatal(string(tt.args.min), string(tt.args.max), gots)
+			}
+		})
 	}
 }
 
